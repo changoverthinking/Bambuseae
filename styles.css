@@ -399,6 +399,7 @@ tr:last-child td { border-bottom: 0; }
 .model-catalog-footer .button { min-height: 2.15rem; padding: .35rem .55rem; font-size: .76rem; }
 .api-link { color: var(--blue); font-size: .72rem; text-decoration: none; white-space: nowrap; }
 .api-link:hover { color: var(--green); text-decoration: underline; }
+.catalog-inline-note { color: var(--muted); font-size: .72rem; text-align: right; }
 .usage-detail-heading { margin-top: 1.35rem; }
 
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); gap: 1rem; }
@@ -455,6 +456,7 @@ input[type="range"] { accent-color: var(--green); }
 
 .field { display: grid; gap: .4rem; margin-bottom: .9rem; }
 .field label { color: var(--text-soft); font-size: .82rem; font-weight: 700; }
+.field-optional { color: var(--muted); font-size: .72rem; font-weight: 500; }
 .field input, .field textarea, .field select { min-height: 2.8rem; padding: .65rem .75rem; }
 .field textarea { min-height: 7rem; resize: vertical; }
 .form-actions { display: flex; justify-content: flex-end; gap: .55rem; margin-top: 1rem; }

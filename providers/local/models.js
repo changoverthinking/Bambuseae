@@ -1,6 +1,6 @@
 // Các lựa chọn chạy cục bộ/offline của Bambuseae.
-// Đây là lớp mô phỏng trong bản GitHub tĩnh: không cần API key và không gửi dữ liệu ra ngoài.
-// Muốn chạy LLM thật trên thiết bị, có thể thay adapter bằng WebLLM/Transformers.js hoặc local server.
+// Đây là placeholder trong bản GitHub tĩnh: không cần API key nhưng chưa có runtime LLM thật.
+// Muốn chạy LLM thật trên thiết bị, cần cài WebLLM/Transformers.js hoặc local server.
 const models = [
   {
     id: "bambuseae-local",
@@ -10,10 +10,10 @@ const models = [
     tier: "Không cần API",
     shared: false,
     local: true,
-    available: true,
-    status: "Sẵn sàng cục bộ",
+    available: false,
+    status: "Chưa cài runtime",
     reset: "Không áp dụng",
-    note: "Mô phỏng cục bộ; nội dung không rời khỏi trình duyệt"
+    note: "Chưa cài runtime AI cục bộ; không tạo phản hồi giả"
   },
   {
     id: "phi-local",
@@ -23,10 +23,10 @@ const models = [
     tier: "Không cần API",
     shared: false,
     local: true,
-    available: true,
-    status: "Sẵn sàng cục bộ",
+    available: false,
+    status: "Chưa cài runtime",
     reset: "Không áp dụng",
-    note: "Lựa chọn offline mô phỏng; không cần API key"
+    note: "Chưa cài runtime Phi thật trong trình duyệt; cần WebGPU/LLM runtime"
   },
   {
     id: "llama-local",
@@ -36,10 +36,10 @@ const models = [
     tier: "Không cần API",
     shared: false,
     local: true,
-    available: true,
-    status: "Sẵn sàng cục bộ",
+    available: false,
+    status: "Chưa cài runtime",
     reset: "Không áp dụng",
-    note: "Lựa chọn offline mô phỏng; muốn chạy Llama thật cần runtime cục bộ"
+    note: "Chưa cài runtime Llama thật trong trình duyệt; cần WebGPU/LLM runtime"
   }
 ];
 

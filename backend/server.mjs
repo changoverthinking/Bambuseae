@@ -21,6 +21,7 @@ const frontendUrl = (process.env.BAMBUSEAE_FRONTEND_URL || allowedOrigin).replac
 const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
 const googleClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || "";
 const googleRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "";
+const allowClientModel = process.env.BAMBUSEAE_ALLOW_CLIENT_MODEL !== "false";
 const authCookieName = "bambuseae_session";
 const authSessions = new Map();
 const oauthStates = new Map();
@@ -176,9 +177,10 @@ function buildSystemPrompt(body) {
   ].filter(Boolean).join("\n\n");
 }
 
-function providerModel(provider) {
+function providerModel(provider, requestedModel = "") {
   const config = personalProviders[provider];
-  const model = config ? process.env[`BAMBUSEAE_${config.env}_MODEL`] : "";
+  const requested = String(requestedModel || "").trim().slice(0, 160);
+  const model = allowClientModel && requested ? requested : config ? process.env[`BAMBUSEAE_${config.env}_MODEL`] : "";
   if (!model) throw new Error("MODEL_NOT_CONFIGURED");
   return model;
 }
@@ -195,11 +197,13 @@ function providerMessages(body) {
 
 function parseUsage(usage) {
   if (!usage || typeof usage !== "object") return null;
-  const input = Number(usage.input_tokens ?? usage.prompt_tokens ?? usage.promptTokenCount);
-  const output = Number(usage.output_tokens ?? usage.completion_tokens ?? usage.candidatesTokenCount);
-  const total = Number(usage.total_tokens ?? (Number.isFinite(input) && Number.isFinite(output) ? input + output : NaN));
-  return Number.isFinite(input) || Number.isFinite(output) || Number.isFinite(total)
-    ? { input_tokens: Number.isFinite(input) ? input : 0, output_tokens: Number.isFinite(output) ? output : 0, total_tokens: Number.isFinite(total) ? total : 0 }
+  const nested = usage.tokens || usage.token_usage || {};
+  const input = Number(usage.input_tokens ?? usage.prompt_tokens ?? usage.promptTokenCount ?? nested.input_tokens ?? nested.inputTokens);
+  const output = Number(usage.output_tokens ?? usage.completion_tokens ?? usage.candidatesTokenCount ?? nested.output_tokens ?? nested.outputTokens);
+  const reportedTotal = Number(usage.total_tokens ?? usage.totalTokenCount ?? nested.total_tokens ?? nested.totalTokens);
+  const total = Number.isFinite(reportedTotal) ? reportedTotal : Number.isFinite(input) && Number.isFinite(output) ? input + output : NaN;
+  return Number.isFinite(input) && Number.isFinite(output) && Number.isFinite(total)
+    ? { input_tokens: input, output_tokens: output, total_tokens: total }
     : null;
 }
 
@@ -218,33 +222,36 @@ async function callOpenAICompatible(body, provider, key) {
   const config = personalProviders[provider];
   const baseUrl = config.baseUrl.replace(/\/$/, "");
   if (!baseUrl) throw new Error("PROVIDER_BASE_URL_NOT_CONFIGURED");
+  const model = providerModel(provider, body.modelName);
   const payload = await fetchJson(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: providerModel(provider), messages: providerMessages(body), temperature: 0.7 })
+    body: JSON.stringify({ model, messages: providerMessages(body), temperature: 0.7 })
   });
   const content = payload?.choices?.[0]?.message?.content;
   if (!content) throw new Error("UPSTREAM_EMPTY_RESPONSE");
-  return { message: { content }, usage: parseUsage(payload.usage), providerModel: providerModel(provider) };
+  return { message: { content }, usage: parseUsage(payload.usage), providerModel: model };
 }
 
 async function callAnthropic(body, key) {
   const config = personalProviders.anthropic;
+  const model = providerModel("anthropic", body.modelName);
   const messages = cleanMessages(body.messages).map((message) => ({ role: message.role, content: message.content }));
   const payload = await fetchJson(`${config.baseUrl.replace(/\/$/, "")}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: providerModel("anthropic"), max_tokens: 4096, system: buildSystemPrompt(body), messages })
+    body: JSON.stringify({ model, max_tokens: 4096, system: buildSystemPrompt(body), messages })
   });
   const content = Array.isArray(payload?.content) ? payload.content.filter((part) => part?.type === "text").map((part) => part.text).join("\n") : "";
   if (!content) throw new Error("UPSTREAM_EMPTY_RESPONSE");
-  return { message: { content }, usage: parseUsage(payload.usage), providerModel: providerModel("anthropic") };
+  return { message: { content }, usage: parseUsage(payload.usage), providerModel: model };
 }
 
 async function callGoogle(body, key) {
   const config = personalProviders.google;
+  const model = providerModel("google", body.modelName);
   const contents = cleanMessages(body.messages).map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content }] }));
-  const url = `${config.baseUrl.replace(/\/$/, "")}/models/${encodeURIComponent(providerModel("google"))}:generateContent?key=${encodeURIComponent(key)}`;
+  const url = `${config.baseUrl.replace(/\/$/, "")}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
   const payload = await fetchJson(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -252,19 +259,20 @@ async function callGoogle(body, key) {
   });
   const content = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim();
   if (!content) throw new Error("UPSTREAM_EMPTY_RESPONSE");
-  return { message: { content }, usage: parseUsage(payload.usageMetadata), providerModel: providerModel("google") };
+  return { message: { content }, usage: parseUsage(payload.usageMetadata), providerModel: model };
 }
 
 async function callCohere(body, key) {
   const config = personalProviders.cohere;
+  const model = providerModel("cohere", body.modelName);
   const payload = await fetchJson(`${config.baseUrl.replace(/\/$/, "")}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: providerModel("cohere"), messages: providerMessages(body), temperature: 0.7 })
+    body: JSON.stringify({ model, messages: providerMessages(body), temperature: 0.7 })
   });
   const content = Array.isArray(payload?.message?.content) ? payload.message.content.filter((part) => part?.type === "text").map((part) => part.text).join("\n") : payload?.message?.content;
   if (!content) throw new Error("UPSTREAM_EMPTY_RESPONSE");
-  return { message: { content }, usage: parseUsage(payload.usage), providerModel: providerModel("cohere") };
+  return { message: { content }, usage: parseUsage(payload.usage), providerModel: model };
 }
 
 async function callShared(body) {

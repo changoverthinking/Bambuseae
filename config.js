@@ -2,6 +2,8 @@
  * Bambuseae runtime configuration.
  * Keep this file free of API keys. It is safe to commit to GitHub.
  * Copy the values from config.example.js when you have a backend.
+ * With apiBaseUrl configured, API-backed AI runs inside Bambuseae instead
+ * of opening a consumer web page.
  */
 window.BAMBUSEAE_CONFIG = {
   apiBaseUrl: "",

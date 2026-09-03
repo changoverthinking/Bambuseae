@@ -1,6 +1,6 @@
 # Bambuseae API gateway — bản thiết kế kết nối
 
-GitHub Pages không chạy được backend. Thư mục giao diện gọi các endpoint sau khi `config.js` có `apiBaseUrl`:
+GitHub Pages không chạy được backend. Thư mục giao diện gọi các endpoint sau khi `config.js` có `apiBaseUrl`. Khi gateway hoạt động, AI có API chính thức sẽ trả lời ngay trong Bambuseae; giao diện không dùng iframe và không tự động hóa tài khoản web.
 
 ## `POST /api/chat`
 
@@ -17,7 +17,7 @@ Request:
 }
 ```
 
-Với AI cá nhân, frontend gửi API key tạm thời trong header `X-Bambuseae-Provider-Key` qua HTTPS. Gateway chọn provider từ trường `provider`, đọc tên model thật từ biến môi trường tương ứng và tuyệt đối không ghi header này vào log. AI dùng chung dùng `BAMBUSEAE_SHARED_*` ở phía server.
+Với AI cá nhân, frontend gửi API key tạm thời trong header `X-Bambuseae-Provider-Key` qua HTTPS. Gateway chọn provider từ trường `provider`. Người dùng có thể gửi `modelName` từ hộp kết nối nếu `BAMBUSEAE_ALLOW_CLIENT_MODEL=true`; nếu để trống, gateway đọc tên model từ biến môi trường tương ứng. Tuyệt đối không ghi header này vào log. AI dùng chung dùng `BAMBUSEAE_SHARED_*` ở phía server.
 
 ## Hợp đồng tài khoản cần triển khai
 
@@ -62,5 +62,15 @@ Response tối thiểu:
 Backend có thể chạy trên VPS/Cloudflare Worker/serverless riêng. `server.mjs` là gateway starter không cần npm package, hỗ trợ AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere theo `.env.example`. Tạo biến môi trường, chạy `node backend/server.mjs`, rồi đặt `apiBaseUrl` trong `config.js`.
 
 Gateway starter vẫn chưa phải backend nhiều người dùng hoàn chỉnh: phiên Google hiện lưu trong bộ nhớ tiến trình, chưa có database, đồng bộ dự án hoặc kho key cá nhân bền vững. Trước khi công khai, phải thêm database/session store, PKCE/nonce và liên kết tài khoản bền vững, xác thực mọi request và ghi usage theo user/project. Không đưa `.env` hoặc API key lên GitHub.
+
+## Chạy gateway để chat trong app
+
+1. Sao chép `backend/.env.example` thành `.env` trên máy chủ (không commit file này).
+2. Đặt provider/model theo một trong hai cách: đặt `BAMBUSEAE_*_MODEL` ở server, hoặc giữ `BAMBUSEAE_ALLOW_CLIENT_MODEL=true` để nhập Model ID trong Bambuseae.
+3. Chạy `node backend/server.mjs` trên máy chủ có HTTPS hoặc đặt sau reverse proxy HTTPS.
+4. Sửa `config.js` ở frontend: `apiBaseUrl: "https://api-cua-ban.example"`.
+5. Mở Bambuseae → **Cài đặt → Kết nối AI**, chọn provider, mở link chính thức lấy key, nhập key và Model ID (nếu cần). Key chỉ giữ trong phiên trình duyệt.
+
+Gói web miễn phí của ChatGPT, Gemini, Claude… không tự cấp quyền API. Muốn dùng chúng bên trong Bambuseae phải có API key/endpoint hợp lệ của nhà cung cấp hoặc dùng model mã nguồn mở chạy bằng runtime riêng.
 
 Database production nên có các bảng `profiles`, `projects`, `threads`, `messages`, `skills`, `plugins`, `project_members`, `project_skills`, `project_plugins`, `ai_connections` và `usage_events`. API key cá nhân cần được mã hóa, kiểm tra quyền và xóa được.

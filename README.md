@@ -2,7 +2,7 @@
 
 Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình: chọn AI, giữ mạch hội thoại, gắn Skill/Plugin, quản lý dự án, thư viện, ghim nội dung và theo dõi token.
 
-## Bản V9 cập nhật (V9.1)
+## Bản V9 cập nhật (V9.2 · In-app API)
 
 - Giao diện responsive cho máy tính và iPhone.
 - Đăng nhập bản thử cục bộ để xem toàn bộ luồng sử dụng.
@@ -15,7 +15,7 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 - Tạo dự án, gắn Skill/Plugin và ghim dự án/đoạn chat/tin nhắn.
 - Xóa dự án có xác nhận; các Thread và nhật ký token thuộc dự án cũng được dọn cùng.
 - Danh mục gồm các model API/cục bộ hiện có, **11 dịch vụ AI miễn phí qua web** (ChatGPT, Gemini, Claude, Copilot, Grok, DeepSeek, Qwen, Meta AI, Perplexity, Le Chat và Poe) và connector free-tier cho Gemini API, OpenRouter, Hugging Face và Cohere.
-- AI web miễn phí có nút mở website chính thức, không bị ghi nhầm là đã kết nối API. Connector API hiển thị link chính thức để lấy key và chỉ hoạt động sau khi có backend gateway.
+- AI web miễn phí được tách rõ: model có API chính thức sẽ mở hộp kết nối ngay trong Bambuseae và chạy qua provider API tương ứng; model chỉ có web consumer không tự nhảy sang website, không sinh phản hồi giả và chỉ hiện tài liệu developer chính thức. Gói Free trên web không tự bao gồm quota API.
 - Trạng thái khởi đầu hoàn toàn trống: không tự tạo dự án, Thread, tin nhắn hay nhật ký token. Người dùng có thể xóa cả dự án cuối cùng.
 - Menu tên tài khoản/avatar có cài đặt, đăng xuất và chuyển sang màn hình đăng nhập; màn hình đăng nhập có đăng ký, ghi nhớ đăng nhập và Google OAuth khi backend được cấu hình.
 - Lưu dữ liệu bản thử trong trình duyệt bằng `localStorage`.
@@ -51,7 +51,7 @@ providers/
 └─ gateway-free/
 ```
 
-Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm thư mục AI, đăng ký trong `providers/registry.js`, rồi để backend xử lý API key và định dạng gọi thật. Model trong `providers/local/` là lựa chọn mô phỏng/offline, không gọi gateway và không cần API key. `skills/`, `plugins/` và `core/` cũng được dành riêng để mở rộng thành các module độc lập.
+Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm thư mục AI, đăng ký trong `providers/registry.js`, rồi để backend xử lý API key và định dạng gọi thật. Model trong `providers/local/` hiện là placeholder cho runtime offline; không gọi gateway và không được xem là AI thật cho tới khi cài WebGPU/LLM runtime. `skills/`, `plugins/` và `core/` cũng được dành riêng để mở rộng thành các module độc lập.
 
 ## Đưa lên GitHub Pages
 
@@ -61,7 +61,7 @@ Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm
 4. Chọn **Deploy from a branch**, branch `main`, thư mục `/root`, rồi lưu.
 5. Mở địa chỉ GitHub Pages bằng Safari trên iPhone → **Share → Add to Home Screen**.
 
-GitHub Pages chỉ phục vụ giao diện tĩnh. Bản V9 có thể mở và dùng ngay với link tới 11 AI web miễn phí. Đăng nhập Google, đồng bộ giữa thiết bị, AI dùng chung và hạn mức thật cần một API gateway/backend riêng. Giao diện không sinh phản hồi AI demo khi chưa có gateway; mọi usage/quota chỉ hiển thị khi nhà cung cấp hoặc gateway trả dữ liệu thật.
+GitHub Pages chỉ phục vụ giao diện tĩnh. Bản này vẫn có thể xem danh mục 11 AI web miễn phí, nhưng để chat ngay trong Bambuseae cần API gateway/backend riêng. Đăng nhập Google, đồng bộ giữa thiết bị, AI dùng chung và hạn mức thật cũng cần gateway. Giao diện không sinh phản hồi AI demo khi chưa có gateway; mọi usage/quota chỉ hiển thị khi nhà cung cấp hoặc gateway trả dữ liệu thật.
 
 ## Kết nối backend
 
@@ -75,7 +75,7 @@ window.BAMBUSEAE_CONFIG = {
 };
 ```
 
-API gateway nên chịu trách nhiệm xác thực người dùng, kiểm tra quyền dự án, gọi nhà cung cấp AI, chuẩn hóa trường `usage`, ghi hạn mức và áp dụng rate limit. Gateway starter đi kèm đã có đường gọi tối thiểu cho AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere. Với AI cá nhân, frontend chỉ gửi key tạm thời qua HTTPS trong header `X-Bambuseae-Provider-Key`; gateway không được ghi header này vào log.
+API gateway nên chịu trách nhiệm xác thực người dùng, kiểm tra quyền dự án, gọi nhà cung cấp AI, chuẩn hóa trường `usage`, ghi hạn mức và áp dụng rate limit. Gateway starter đi kèm đã có đường gọi tối thiểu cho AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere. Với AI cá nhân, frontend chỉ gửi key tạm thời qua HTTPS trong header `X-Bambuseae-Provider-Key`; gateway không được ghi header này vào log. Người dùng có thể nhập thêm **Model ID thật** trong hộp kết nối. Nếu `BAMBUSEAE_ALLOW_CLIENT_MODEL=true` (mặc định trong `.env.example`), gateway dùng Model ID đó; nếu để trống, gateway dùng `BAMBUSEAE_*_MODEL` trên server.
 
 Tên model hiển thị ở frontend là mã Bambuseae. Model thật cần đặt trên server bằng các biến như `BAMBUSEAE_OPENAI_MODEL`, `BAMBUSEAE_ANTHROPIC_MODEL`, `BAMBUSEAE_GOOGLE_MODEL`… trong `.env`, không đặt trong repository.
 
@@ -119,7 +119,7 @@ Giao diện mặc định vẫn là nền tối để giữ phong cách Bambusea
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại dùng `bambuseae-shell-v10` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, đóng rồi mở lại trang GitHub Pages; nếu cache chưa đổi, xóa PWA cũ khỏi màn hình chính và thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại dùng `bambuseae-shell-v11` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, đóng rồi mở lại trang GitHub Pages; nếu cache chưa đổi, xóa PWA cũ khỏi màn hình chính và thêm lại.
 
 ## Chạy kiểm tra nhanh
 

@@ -14,6 +14,7 @@ const AUTH_SESSION_KEY = "bambuseae-auth-session-v1";
 const REMEMBERED_AUTH_KEY = "bambuseae-remembered-auth-v1";
 const ACCOUNTS_KEY = "bambuseae-local-accounts-v1";
 const sessionKeys = Object.create(null);
+const sessionModelNames = Object.create(null);
 const app = document.querySelector("#app");
 const modal = document.querySelector("#modal");
 const toastRegion = document.querySelector("#toast-region");
@@ -265,25 +266,25 @@ function normalizeModelRuntime(models) {
         ...model,
         available: true,
         remoteAvailable: false,
-        status: "Mở web chính thức",
-        note: model.note || "Dùng qua website chính thức; không cần API key"
+        status: model.apiConnectorId ? "Cần API để chạy trong app" : "Chỉ có web consumer",
+        note: model.note || "Không lấy cookie web và không tạo phản hồi giả trong Bambuseae"
       };
     }
     if (model.local) {
       return {
         ...model,
-        available: true,
+        available: false,
         remoteAvailable: false,
-        status: "Sẵn sàng cục bộ",
-        note: model.note || "Chạy mô phỏng cục bộ; không cần API key"
+        status: "Chưa cài runtime",
+        note: model.note || "Chưa cài runtime AI cục bộ; Bambuseae không tạo phản hồi giả"
       };
     }
     if (model.shared) {
       return {
         ...model,
         remoteAvailable: false,
-        status: config.apiBaseUrl ? "Đang kiểm tra gateway" : "Mô phỏng cục bộ",
-        note: config.apiBaseUrl ? "Đang chờ gateway xác nhận model" : "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng"
+        status: config.apiBaseUrl ? "Đang kiểm tra gateway" : "Chưa có gateway",
+        note: config.apiBaseUrl ? "Đang chờ gateway xác nhận model" : "Chưa có gateway; Bambuseae không tạo phản hồi giả"
       };
     }
     if (config.apiBaseUrl && sessionKeys[model.id]) return { ...model, remoteAvailable: false };
@@ -410,6 +411,25 @@ function getModel(id) {
   return state.models.find((model) => model.id === id) || state.models[0];
 }
 
+function getApiConnector(model) {
+  if (!model) return null;
+  if (model.apiConnectorId) return state.models.find((item) => item.id === model.apiConnectorId) || null;
+  return model.webOnly || model.local ? null : model;
+}
+
+function isInAppConnected(model) {
+  const connector = getApiConnector(model);
+  if (!connector || !config.apiBaseUrl || connector.local || connector.webOnly) return false;
+  if (connector.shared) return connector.remoteAvailable === true;
+  return Boolean(sessionKeys[connector.id] && connector.available);
+}
+
+function modelUsageStats(model) {
+  const ownStats = usageStats(model);
+  if (ownStats.hasQuota || ownStats.hasUsage || ownStats.hasLimit || !model?.apiConnectorId) return ownStats;
+  return usageStats(getApiConnector(model));
+}
+
 function getProject(id = state.activeProjectId) {
   return state.projects.find((project) => project.id === id) || null;
 }
@@ -433,7 +453,7 @@ function usageStats(model) {
 }
 
 function usageStatusLabel(model) {
-  const stats = usageStats(model);
+  const stats = modelUsageStats(model);
   if (stats.hasQuota) return `quota ${exactNumber(stats.limit)} token`;
   if (stats.hasUsage && stats.hasLimit) return `đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)} token`;
   if (stats.hasUsage) return `đã dùng ${exactNumber(stats.used)} token · chưa có quota`;
@@ -442,7 +462,7 @@ function usageStatusLabel(model) {
 }
 
 function getFallbackModel(currentId) {
-  return state.models.find((model) => model.id !== currentId && !model.webOnly && !model.local && (!model.shared || model.remoteAvailable === true) && model.available && usageStats(model).hasQuota && usageStats(model).remaining > 0) || null;
+  return state.models.find((model) => model.id !== currentId && !model.local && isInAppConnected(model) && modelUsageStats(model).hasQuota && modelUsageStats(model).remaining > 0) || null;
 }
 
 function modelOptionList() {
@@ -454,18 +474,20 @@ function modelOptionList() {
   });
   return [...groups.entries()].map(([provider, models]) => `<optgroup label="${escapeHtml(provider)}">${models.map((model) => {
     const live = model.remoteAvailable === true && Boolean(config.apiBaseUrl);
+    const inApp = isInAppConnected(model);
     const status = model.webOnly
-      ? "web miễn phí"
+      ? model.apiConnectorId ? (inApp ? "API trong app" : "cần API") : "chỉ có web"
       : model.local
       ? "cục bộ · không API"
       : model.shared
-      ? config.apiBaseUrl
-        ? live ? "đã kết nối" : "đang kiểm tra"
-        : "demo cục bộ"
+        ? config.apiBaseUrl
+          ? live ? "đã kết nối" : "đang kiểm tra"
+        : "chưa có gateway"
       : model.available
         ? config.apiBaseUrl ? "đã nhập key" : "chờ gateway"
         : "chưa kết nối";
-    return `<option value="${escapeHtml(model.id)}" ${model.id === state.activeModelId ? "selected" : ""} ${model.available ? "" : "disabled"}>${escapeHtml(model.name)} · ${status}</option>`;
+    const disabled = model.webOnly ? "" : model.available ? "" : "disabled";
+    return `<option value="${escapeHtml(model.id)}" ${model.id === state.activeModelId ? "selected" : ""} ${disabled}>${escapeHtml(model.name)} · ${status}</option>`;
   }).join("")}</optgroup>`).join("");
 }
 
@@ -548,7 +570,7 @@ function renderTopbar() {
   const localCount = state.models.filter((model) => model.local && model.available).length;
   const demoCount = state.models.filter((model) => model.shared && !model.local && model.available).length;
   const webCount = state.models.filter((model) => model.webOnly).length;
-  const statusText = demo ? `Chưa có gateway · ${localCount} cục bộ · ${demoCount} mô phỏng · ${webCount} AI web` : `Gateway · ${liveCount}/${state.models.length} AI đã xác nhận · ${webCount} AI web`;
+  const statusText = demo ? `Chưa có gateway · ${localCount} cục bộ · ${demoCount} AI chờ gateway · ${webCount} AI web` : `Gateway · ${liveCount}/${state.models.length} AI đã xác nhận · ${webCount} AI web`;
   const project = getProject();
   return `
     <header class="topbar">
@@ -582,7 +604,7 @@ function renderChatView() {
   const thread = getThread();
   const model = getModel(state.activeModelId);
   if (!thread) return renderEmptyWorkspaceChat(model, project);
-  const stats = usageStats(model);
+  const stats = modelUsageStats(model);
   const tokenLabel = stats.hasQuota ? `${Math.round(stats.remainingPercent)}% token còn lại` : stats.hasUsage && stats.hasLimit ? `đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)} token` : stats.hasUsage ? `đã dùng ${exactNumber(stats.used)} token · chưa có quota` : "chưa có quota/usage thật";
   const handoff = state.lastHandoff && state.lastHandoff.threadId === thread.id ? state.lastHandoff : null;
   const connectionLabel = modelConnectionLabel(model);
@@ -611,10 +633,14 @@ function renderRecentThreadTile(thread) {
 }
 
 function modelConnectionLabel(model) {
-  if (model?.webOnly) return "Miễn phí qua web · không cần API";
+  if (model?.webOnly) {
+    if (model.apiConnectorId && isInAppConnected(model)) return "AI thật trong Bambuseae qua API";
+    if (model.apiConnectorId) return "Cần API chính thức để dùng trong app";
+    return "Chỉ có tài khoản web · chưa có API tương đương";
+  }
   if (model?.local) return "Chạy cục bộ · không cần API";
   if (model?.remoteAvailable === true) return "AI thật qua gateway";
-  if (model?.shared && !config.apiBaseUrl) return "Mô phỏng cục bộ";
+  if (model?.shared && !config.apiBaseUrl) return "Chưa có gateway";
   if (model?.shared) return "Đang kiểm tra gateway";
   if (model?.available) return "Đã nhập key · chờ gateway";
   return "Chưa kết nối";
@@ -694,30 +720,33 @@ function renderUsageView() {
   const totalUsedLabel = observed.length ? formatNumber(totalUsed) : "Chưa có";
   return `${renderHeading("Theo dõi sử dụng", "Hạn mức & token", "Theo dõi từng AI, nhận biết lúc sắp hết và chuyển sang mô hình dự phòng trước khi mạch chuyện bị ngắt.", `<button class="button button-gold" data-action="open-modal" data-modal="connection">＋ Kết nối AI</button>`)}
     <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Token đã dùng</span><strong>${totalUsedLabel}</strong><small>${observed.length ? "usage thật từ API" : "chưa có AI trả usage"}</small></article><article class="card stat-card stat-blue"><span class="stat-label">Quota còn lại</span><strong>${measurable.length ? formatNumber(totalRemaining) : "Chưa có"}</strong><small>${measurable.length ? "chỉ khi gateway trả quota" : "không tự ước tính"}</small></article><article class="card stat-card stat-gold"><span class="stat-label">AI sắp hết nhất</span><strong>${lowest ? Math.round(usageStats(lowest).remainingPercent) : "—"}${lowest ? "%" : ""}</strong><small>${lowest ? escapeHtml(lowest.name) : "Chưa có quota thật"}</small></article><article class="card stat-card"><span class="stat-label">Cách đo</span><strong>${config.apiBaseUrl ? "API thật" : "Chưa kết nối"}</strong><small>${config.apiBaseUrl ? "chỉ lấy usage/quota gateway trả về" : "không tính demo"}</small></article></div>
-    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>AI web mở trang chính thức; AI API chỉ hoạt động sau khi có gateway và khóa hợp lệ.</p></div><span class="tag">${state.models.length} lựa chọn · ${available.length} sẵn sàng</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
+    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>AI có API sẽ chạy trực tiếp trong Bambuseae qua gateway. AI web không có API tương đương sẽ không bị mở sang website khi bạn bấm gửi.</p></div><span class="tag">${state.models.length} lựa chọn · ${available.length} sẵn sàng</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
     <div class="section-head usage-detail-heading"><div><p class="section-title">Chi tiết AI đang bật</p><p>Chỉ hiển thị usage/quota do AI thật hoặc gateway trả về; không tính số liệu demo.</p></div></div>
     <section class="grid-2" style="margin-bottom:1rem">${tracked.map((model) => { const stats = usageStats(model); return `<article class="card card-pad"><div class="section-head"><div><p class="section-title">${escapeHtml(model.name)}</p><p>${escapeHtml(model.provider)} · ${escapeHtml(model.tier)}</p></div><span class="tag">${stats.hasQuota ? `${Math.round(stats.remainingPercent)}% còn` : "Chưa đủ số liệu"}</span></div>${quotaMeter(model)}<div class="metric-list" style="margin-top:.9rem"><div class="metric-line"><span>Đã dùng</span><strong>${stats.hasUsage ? `${exactNumber(stats.used)} token` : "Chưa có"}</strong></div><div class="metric-line"><span>Quota</span><strong>${stats.hasLimit ? `${exactNumber(stats.limit)} token` : "Chưa có"}</strong></div><div class="metric-line"><span>Làm mới</span><strong>${escapeHtml(model.reset || "Theo gateway")}</strong></div></div></article>`; }).join("") || `<div class="card card-pad"><span class="empty-chip">Chưa có AI API/cục bộ để đo token.</span></div>`}</section>
     <section class="card card-pad"><div class="section-head"><div><p class="section-title">Nhật ký gần đây</p><p>Input và output được ghi theo từng câu trả lời.</p></div><span class="tag">${state.usageLog.length} lượt</span></div><div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>AI</th><th>Input</th><th>Output</th><th>Tổng</th><th>Nguồn</th></tr></thead><tbody>${state.usageLog.slice(0, 10).map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(getModel(entry.modelId).name)}</td><td>${exactNumber(entry.input)}</td><td>${exactNumber(entry.output)}</td><td><strong>${exactNumber(entry.total)}</strong></td><td>${escapeHtml(entry.source)}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
 function renderModelCatalogCard(model) {
-  const stats = usageStats(model);
-  const ready = Boolean(model.available);
+  const connector = getApiConnector(model);
+  const stats = modelUsageStats(model);
+  const ready = model.webOnly ? isInAppConnected(model) : Boolean(model.available);
   const local = Boolean(model.local);
   const demo = model.shared && !config.apiBaseUrl;
   const live = model.remoteAvailable === true;
   const initials = String(model.provider || "AI").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const action = model.webOnly
-    ? `<a class="button button-quiet" href="${escapeHtml(model.webUrl)}" target="_blank" rel="noopener noreferrer">Mở AI web ↗</a>`
+    ? connector
+      ? `<button class="button button-quiet" type="button" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(connector.id)}">${ready ? "Quản lý API" : "Dùng trong Bambuseae"}</button>`
+      : `<span class="catalog-inline-note">Chưa có API consumer</span>`
     : model.shared || local
     ? `<button class="button button-quiet" type="button" data-action="view" data-view="chat">Mở chat</button>`
     : `<button class="button button-quiet" type="button" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${ready ? "Quản lý" : "Kết nối"}</button>`;
-  const statusLabel = model.webOnly ? "Miễn phí qua web" : local ? "Không cần API" : demo ? "Demo cục bộ" : live ? "AI thật" : model.shared ? "Đang kiểm tra" : ready ? "Đã nhập key" : "Chưa kết nối";
-  const statusClass = model.webOnly || demo || !ready ? "demo" : "";
-  const note = model.webOnly ? model.note || "Mở website chính thức; Bambuseae không gửi nội dung tự động." : local ? model.note || "Chạy mô phỏng cục bộ; không gửi nội dung ra ngoài trình duyệt." : demo ? "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng." : model.note || "Kết nối AI trong Cài đặt";
+  const statusLabel = model.webOnly ? connector ? (ready ? "AI thật trong app" : "Cần kết nối API") : "Chỉ có web" : local ? "Không cần API" : demo ? "Chưa có gateway" : live ? "AI thật" : model.shared ? "Đang kiểm tra" : ready ? "Đã nhập key" : "Chưa kết nối";
+  const statusClass = (model.webOnly && !ready) || demo || !ready ? "demo" : "";
+  const note = model.webOnly ? connector ? `${model.apiNote || "Kết nối API chính thức để dùng trực tiếp trong Bambuseae."} ${ready ? "Đã sẵn sàng gửi trong app." : "Chưa gửi nội dung đi khi chưa kết nối."}` : model.apiNote || "Nhà cung cấp này hiện chỉ có luồng web consumer trong danh mục." : local ? model.note || "Runtime cục bộ thật chưa được cài; không gửi nội dung ra ngoài trình duyệt." : demo ? "Chưa có gateway; Bambuseae không tạo phản hồi demo." : model.note || "Kết nối AI trong Cài đặt";
   const apiLink = !local && model.apiUrl ? officialApiLink(model) : "";
-  const detail = model.webOnly ? `<p class="model-catalog-note">${escapeHtml(note)}</p>` : ready ? `${quotaMeter(model, true)}<p class="model-catalog-note">${escapeHtml(note)}${demo ? " Hạn mức hiện là số liệu mô phỏng." : ""}</p>` : `<p class="model-catalog-note">${escapeHtml(note)}</p>`;
-  const remainingLabel = model.webOnly ? "Miễn phí · hạn mức do nhà cung cấp quản lý" : local ? "Không có quota AI thật" : stats.hasQuota ? `${Math.round(stats.remainingPercent)}% token còn lại` : stats.hasUsage && stats.hasLimit ? `Đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)}` : stats.hasUsage ? `Đã dùng ${exactNumber(stats.used)} token · chưa có quota` : "Chưa có usage thật";
+  const detail = model.webOnly ? `<p class="model-catalog-note">${escapeHtml(note)}</p>` : ready ? `${quotaMeter(model, true)}<p class="model-catalog-note">${escapeHtml(note)}</p>` : `<p class="model-catalog-note">${escapeHtml(note)}</p>`;
+  const remainingLabel = model.webOnly && !connector ? "Không có API consumer trong app" : local ? "Chưa có runtime AI thật" : stats.hasQuota ? `${Math.round(stats.remainingPercent)}% token còn lại` : stats.hasUsage && stats.hasLimit ? `Đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)}` : stats.hasUsage ? `Đã dùng ${exactNumber(stats.used)} token · chưa có quota` : "Chưa có usage thật";
   return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${statusClass}">${statusLabel}</span></div>${detail}<div class="model-catalog-footer"><span>${remainingLabel}</span><div class="model-catalog-actions">${apiLink}${action}</div></div></article>`;
 }
 
@@ -729,8 +758,8 @@ function officialApiLink(model) {
 function renderSettingsView() {
   return `${renderHeading("Thiết lập", "Cài đặt Bambuseae", "Kết nối AI, điều chỉnh cách chuyển tiếp và kiểm tra trạng thái bảo mật.", `<button class="button button-primary" data-action="open-modal" data-modal="connection">＋ Thêm kết nối</button>`)}
     <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ chạy qua backend và cookie phiên bảo mật.</p></div><span class="status-pill ${config.googleOAuthEnabled && config.apiBaseUrl ? "" : "demo"}">${config.googleOAuthEnabled && config.apiBaseUrl ? "Google đã cấu hình" : "Cần cấu hình backend"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)} · ${escapeHtml(authProviderLabel())}</span></div><button class="button button-quiet" data-action="google-login">${state.authProvider === "google" ? "Đã liên kết Google" : "Liên kết Google"}</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất</button></section>
-      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI cần API</p><p>${config.apiBaseUrl ? "Gateway đã khai báo; AI thật chỉ hiện sau khi gateway xác nhận." : "Chưa có gateway; key cá nhân chỉ giữ tạm trong phiên trình duyệt."}</p></div></div>${state.models.filter((model) => !model.shared && !model.local && !model.webOnly).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.remoteAvailable === true ? "AI thật qua gateway" : model.available ? "Đã nhập key · chờ gateway" : "Chưa kết nối"} · ${usageStatusLabel(model)}</span></div><div class="connection-actions">${officialApiLink(model)}<button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Kiểm tra" : "Kết nối"}</button></div></div>`).join("")}<div class="security-note" style="margin-top:.75rem"><strong>Không cần API:</strong> ${state.models.filter((model) => model.local).map((model) => escapeHtml(model.name)).join(", ") || "Chưa có model cục bộ"}. Các model này chạy ở chế độ offline/demo và không cần nhập khóa.</div></section>
-      <section class="card card-pad"><div class="section-head"><div><p class="section-title">AI miễn phí qua web</p><p>Mở website chính thức trong tab mới; GitHub Pages không lấy hoặc chuyển nội dung chat tự động.</p></div><span class="tag">${state.models.filter((model) => model.webOnly).length} AI</span></div><div class="web-ai-list">${state.models.filter((model) => model.webOnly).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.note || "Miễn phí qua web; hạn mức do nhà cung cấp quản lý.")}</span></div><a class="button button-quiet" href="${escapeHtml(model.webUrl)}" target="_blank" rel="noopener noreferrer">Mở web ↗</a></div>`).join("")}</div></section></div>
+      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI cần API</p><p>${config.apiBaseUrl ? "Gateway đã khai báo; AI thật sẽ được kiểm tra ở lần gửi đầu hoặc khi gateway trả trạng thái." : "Chưa có gateway; key cá nhân chỉ giữ tạm trong phiên trình duyệt."}</p></div></div>${state.models.filter((model) => !model.shared && !model.local && !model.webOnly).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.remoteAvailable === true ? "AI thật qua gateway" : model.available ? "Đã nhập key · chờ gateway" : "Chưa kết nối"} · ${usageStatusLabel(model)}</span></div><div class="connection-actions">${officialApiLink(model)}<button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Kiểm tra" : "Kết nối"}</button></div></div>`).join("")}<div class="security-note" style="margin-top:.75rem"><strong>Không cần API:</strong> ${state.models.filter((model) => model.local).map((model) => escapeHtml(model.name)).join(", ") || "Chưa có model cục bộ"}. Các model này hiện là placeholder runtime offline, chưa được xem là AI thật.</div></section>
+      <section class="card card-pad"><div class="section-head"><div><p class="section-title">AI web chạy trong Bambuseae</p><p>Không dùng iframe hay tự động hóa tài khoản web. Với AI có API chính thức, bạn kết nối một lần rồi chat ngay trong app; gói web Free không tự chuyển thành quota API.</p></div><span class="tag">${state.models.filter((model) => model.webOnly).length} AI</span></div><div class="web-ai-list">${state.models.filter((model) => model.webOnly).map((model) => { const connector = getApiConnector(model); const ready = isInAppConnected(model); return `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(connector ? (ready ? "Đã sẵn sàng chạy trong Bambuseae qua API." : "Cần API key riêng để chạy trong Bambuseae.") : "Chỉ có luồng web consumer; chưa có API tương đương trong app.")}</span></div><div class="connection-actions">${officialApiLink(model)}${connector ? `<button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(connector.id)}">${ready ? "Quản lý API" : "Kết nối trong app"}</button>` : ""}</div></div>`; }).join("")}</div></section></div>
       <div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Chuyển AI tự động</p><p>Giữ cùng Thread khi mô hình gần hoặc đã hết hạn mức.</p></div></div><div class="setting-row"><div class="setting-copy"><strong>Tự động chuyển AI</strong><span>Chuyển sang mô hình còn token khi cần.</span></div><input type="checkbox" data-setting="autoFallback" ${state.autoFallback ? "checked" : ""} aria-label="Tự động chuyển AI" /></div><div class="setting-row"><div class="setting-copy"><strong>Ngưỡng cảnh báo</strong><span>Bắt đầu cảnh báo khi còn dưới mức này.</span></div><div class="range-wrap"><input type="range" min="1" max="50" step="1" value="${state.fallbackThreshold}" data-setting="fallbackThreshold" aria-label="Ngưỡng cảnh báo" /><strong id="threshold-value">${state.fallbackThreshold}%</strong></div></div></section><section class="card card-pad"><div class="section-head"><div><p class="section-title">Bảo mật dữ liệu</p><p>Bản GitHub không chứa bí mật.</p></div></div><div class="security-note"><strong>Đang bảo vệ:</strong> config.js không có API key, khóa cá nhân không được lưu vào localStorage, và dữ liệu bản demo chỉ nằm trong trình duyệt này.</div><div class="security-note" style="margin-top:.6rem"><strong>Khi triển khai thật:</strong> dùng backend có Google OAuth, RLS theo tài khoản, mã hóa dữ liệu và gateway có giới hạn tốc độ. AI vẫn nhận nội dung cần xử lý để tạo câu trả lời.</div><button class="button button-danger" style="margin-top:.9rem" data-action="reset-demo">Xóa dữ liệu bản demo</button></section></div></div>`;
 }
 
@@ -959,33 +988,41 @@ function toggleMessagePin(messageId) {
 }
 
 async function callConfiguredApi(model, thread) {
-  if (!config.apiBaseUrl || model.local) return null;
+  const connector = getApiConnector(model);
+  if (!config.apiBaseUrl || model.local || !connector) return null;
   const project = getProject(thread.projectId);
   const messages = thread.messages.map((message) => ({ role: message.role, content: message.content }));
   const memoryScope = thread.memoryScope === "project" && project ? "project" : "global";
   const skillContext = state.skills.filter((skill) => (memoryScope === "global" || project?.skillIds?.includes(skill.id)) && skill.enabled).map((skill) => ({ name: skill.name, instructions: skill.instructions }));
   const pluginContext = state.plugins.filter((plugin) => (memoryScope === "global" || project?.pluginIds?.includes(plugin.id)) && plugin.enabled).map((plugin) => ({ name: plugin.name, permission: plugin.permission }));
-  const adapter = getProviderAdapter(model.id);
+  const adapter = getProviderAdapter(connector.id);
   const request = adapter.buildGatewayRequest({
-    model,
+    model: connector,
     messages,
     project: { id: project?.id || null, name: project?.name || "Chat độc lập", description: project?.description || "", memoryScope },
     memoryScope,
     skills: skillContext,
     plugins: pluginContext
   });
+  request.body = {
+    ...(request.body || {}),
+    // API model id là cấu hình theo phiên; backend có thể dùng model mặc định
+    // trong .env nếu người dùng để trống ô này.
+    modelName: sessionModelNames[connector.id] || connector.modelName || ""
+  };
   const headers = { "Content-Type": "application/json" };
-  if (sessionKeys[model.id]) headers["X-Bambuseae-Provider-Key"] = sessionKeys[model.id];
+  if (sessionKeys[connector.id]) headers["X-Bambuseae-Provider-Key"] = sessionKeys[connector.id];
   const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}${request.path}`, {
     method: request.method,
     headers,
+    credentials: "include",
     body: JSON.stringify(request.body)
   });
   if (!response.ok) throw new Error(`Gateway ${response.status}`);
   const payload = await response.json();
   const content = payload.message?.content || payload.choices?.[0]?.message?.content || payload.output_text;
   if (!content) throw new Error("Gateway không trả nội dung");
-  return { content, usage: payload.usage || null, source: "API" };
+  return { content, usage: payload.usage || null, source: "API thật", connectionModelId: connector.id };
 }
 
 async function sendMessage(form) {
@@ -999,19 +1036,26 @@ async function sendMessage(form) {
     return;
   }
   if (model.webOnly) {
-    window.open(model.webUrl, "_blank", "noopener,noreferrer");
-    toast(`${model.name} dùng qua website chính thức. Bambuseae đã mở tab mới; muốn chuyển ngữ cảnh tự động cần API/OAuth.`, "warn");
-    return;
+    const connector = getApiConnector(model);
+    if (connector && !isInAppConnected(model)) {
+      openModal("connection", connector.id);
+      toast(`${model.name} chỉ chạy trong Bambuseae sau khi kết nối API chính thức.`, "warn");
+      return;
+    }
+    if (!connector) {
+      toast(`${model.name} hiện chỉ có tài khoản web consumer; chưa có API tương đương để chạy trong Bambuseae.`, "warn");
+      return;
+    }
   }
   if (model.local) {
-    toast("Đây là model mô phỏng cục bộ, không phải AI thật. Hãy kết nối AI qua API gateway.", "warn");
+    toast("Runtime AI cục bộ chưa được cài; Bambuseae không tạo phản hồi giả. Hãy kết nối AI qua API gateway.", "warn");
     return;
   }
   if (!config.apiBaseUrl) {
     toast("Chưa có API gateway. Bambuseae không tạo phản hồi demo và chưa gửi nội dung đi.", "warn");
     return;
   }
-  const currentStats = usageStats(model);
+  const currentStats = modelUsageStats(model);
   if (currentStats.hasQuota && currentStats.remaining <= 0) {
     const fallback = state.autoFallback ? getFallbackModel(model.id) : null;
     if (!fallback) {
@@ -1037,6 +1081,12 @@ async function sendMessage(form) {
       model.remoteAvailable = true;
       model.status = "Đã kết nối qua gateway";
       model.note = "AI thật đang chạy qua gateway đã cấu hình";
+      const connector = getApiConnector(model);
+      if (connector && connector.id !== model.id) {
+        connector.remoteAvailable = true;
+        connector.status = "Đã kết nối qua gateway";
+        connector.note = "AI thật đang chạy qua gateway đã cấu hình";
+      }
     }
   } catch (error) {
     toast("Gateway/AI thật chưa trả lời. Không dùng phản hồi demo và không ghi usage giả.", "warn");
@@ -1055,13 +1105,19 @@ async function sendMessage(form) {
   const source = result.source || "API thật";
   thread.messages.push({ id: uid("msg"), role: "assistant", modelId: model.id, content: reply, time: nowTime(), source, pinned: false });
   if (hasExactUsage) {
-    model.used = usageStats(model).used + totalTokens;
-    model.usageSource = "provider";
+    const usageModel = getModel(result.connectionModelId || model.id) || model;
+    usageModel.used = usageStats(usageModel).used + totalTokens;
+    usageModel.usageSource = "provider";
+    if (usageModel.id !== model.id && model.apiConnectorId === usageModel.id) {
+      model.used = usageModel.used;
+      model.limit = usageModel.limit;
+      model.usageSource = "provider";
+    }
     state.usageLog.unshift({ id: uid("usage"), modelId: model.id, threadId: thread.id, input: inputTokens, output: outputTokens, total: totalTokens, source, time: nowTime() });
   } else {
     toast("AI đã trả lời nhưng không gửi trường usage. Bambuseae giữ nguyên trạng thái quota để tránh tính sai.", "warn");
   }
-  if (state.autoFallback && hasExactUsage && usageStats(model).hasQuota && usageStats(model).remainingPercent <= state.fallbackThreshold) {
+  if (state.autoFallback && hasExactUsage && modelUsageStats(model).hasQuota && modelUsageStats(model).remainingPercent <= state.fallbackThreshold) {
     const fallback = getFallbackModel(model.id);
     if (fallback) {
       state.lastHandoff = { fromName: model.name, toName: fallback.name, reason: "Còn dưới ngưỡng cảnh báo", threadId: thread.id, time: nowTime() };
@@ -1087,10 +1143,11 @@ function openModal(kind, modelId = "") {
     modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Thêm Plugin</h2><p>Plugin cần mô tả quyền trước khi dùng.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-plugin"><div class="field"><label for="plugin-name">Tên Plugin</label><input id="plugin-name" name="name" placeholder="Ví dụ: Đọc thư mục tài liệu" required /></div><div class="field"><label for="plugin-description">Mô tả</label><input id="plugin-description" name="description" placeholder="Plugin thực hiện việc gì?" required /></div><div class="field"><label for="plugin-permission">Quyền truy cập</label><select id="plugin-permission" name="permission"><option>Chỉ đọc</option><option>Đọc và ghi</option><option>Gọi Internet</option><option>Cần xác nhận mỗi lần</option></select></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Thêm Plugin</button></div></form></div>`;
   } else {
     const apiModels = state.models.filter((model) => !model.shared && !model.local && !model.webOnly);
+    const rememberedModelName = targetModel ? sessionModelNames[targetModel.id] || targetModel.modelName || "" : "";
     const gatewayNote = config.apiBaseUrl
       ? "Gateway đã được khai báo; chỉ usage/quota do nhà cung cấp hoặc gateway trả về mới được hiển thị là số liệu thật."
       : "Chưa có gateway. GitHub Pages không thể gọi AI thật trực tiếp; lúc này key chỉ được giữ tạm trong phiên và không nên dùng trên thiết bị lạ.";
-    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId" data-action="select-connection-model">${apiModels.map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="connection-guide" id="connection-guide">${officialApiLink(targetModel) || ""}<span>${escapeHtml(targetModel?.apiNote || "Mở trang chính thức để tạo API key.")}</span></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="security-note"><strong>Hạn mức:</strong> Không tự nhập số giả. Bambuseae chỉ hiển thị phần trăm khi gateway trả quota thật. ${gatewayNote}</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
+    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId" data-action="select-connection-model">${apiModels.map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="connection-guide" id="connection-guide">${officialApiLink(targetModel) || ""}<span>${escapeHtml(targetModel?.apiNote || "Mở trang chính thức để tạo API key.")}</span></div><div class="field"><label for="connection-model-name">Model ID thật <span class="field-optional">(tùy chọn)</span></label><input id="connection-model-name" name="modelName" type="text" autocomplete="off" value="${escapeHtml(rememberedModelName)}" placeholder="Ví dụ: gpt-4o-mini hoặc gemini-2.5-flash" /><small class="field-help">Nhập mã model trên trang API nếu backend bật cho phép model theo phiên. Để trống nếu bạn đã đặt BAMBUSEAE_*_MODEL trong backend.</small></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="security-note"><strong>Hạn mức:</strong> Không tự nhập số giả. Bambuseae chỉ hiển thị phần trăm khi gateway trả quota thật. ${gatewayNote}</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
   }
   modal.showModal();
 }
@@ -1183,7 +1240,7 @@ async function hydrateRemoteModels() {
       render();
     }
   } catch {
-    // Gateway chưa online thì giao diện vẫn giữ chế độ mô phỏng.
+    // Gateway chưa online thì giao diện vẫn giữ trạng thái chưa kết nối.
   }
 }
 
@@ -1273,8 +1330,8 @@ function handleChange(event) {
     const model = getModel(target.value);
     const guide = document.querySelector("#connection-guide");
     if (guide) guide.innerHTML = `${officialApiLink(model)}<span>${escapeHtml(model?.apiNote || "Mở trang chính thức để tạo API key.")}</span>`;
-    const limit = document.querySelector("#connection-limit");
-    if (limit && model) limit.value = model.limit;
+    const modelName = document.querySelector("#connection-model-name");
+    if (modelName) modelName.value = model ? sessionModelNames[model.id] || model.modelName || "" : "";
     return;
   }
   if (target.dataset.action === "select-project") return selectProject(target.value);
@@ -1420,7 +1477,10 @@ async function handleSubmit(event) {
     const model = getModel(String(data.get("modelId")));
     const key = String(data.get("key") || "").trim();
     if (!model || !key) return;
+    const modelName = String(data.get("modelName") || "").trim();
     sessionKeys[model.id] = key;
+    if (modelName) sessionModelNames[model.id] = modelName;
+    else delete sessionModelNames[model.id];
     const gatewayConfigured = Boolean(config.apiBaseUrl);
     model.available = gatewayConfigured;
     delete model.remoteAvailable;
