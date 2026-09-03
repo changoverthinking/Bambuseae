@@ -1,0 +1,20 @@
+{
+  "name": "Bambuseae — AI Workspace",
+  "short_name": "Bambuseae",
+  "description": "Trung tâm AI, Skill, Plugin và dự án.",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a1118",
+  "theme_color": "#0a1118",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
