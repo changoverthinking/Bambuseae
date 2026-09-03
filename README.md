@@ -70,7 +70,7 @@ Dữ liệu hội thoại có thể mã hóa khi lưu. Tuy nhiên AI được ch
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`, ví dụ `bambuseae-shell-v2`. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v2`. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
 
 ## Chạy kiểm tra nhanh
 
