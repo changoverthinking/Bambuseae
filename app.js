@@ -25,6 +25,7 @@ const defaultState = {
   authProvider: null,
   rememberLogin: false,
   theme: "dark",
+  workspaceOpen: true,
   activeView: "chat",
   activeProjectId: "project-aig",
   activeThreadId: "thread-world",
@@ -318,6 +319,27 @@ function mergeModelCatalog(savedModels) {
   ];
 }
 
+function normalizeModelRuntime(models) {
+  return models.map((model) => {
+    if (model.shared) {
+      return {
+        ...model,
+        remoteAvailable: false,
+        status: config.apiBaseUrl ? "Đang kiểm tra gateway" : "Mô phỏng cục bộ",
+        note: config.apiBaseUrl ? "Đang chờ gateway xác nhận model" : "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng"
+      };
+    }
+    if (config.apiBaseUrl && sessionKeys[model.id]) return { ...model, remoteAvailable: false };
+    return {
+      ...model,
+      available: false,
+      remoteAvailable: false,
+      status: "Chưa kết nối",
+      note: config.apiBaseUrl ? "Nhập API key để mở AI trong phiên này" : "Cần API gateway và API key"
+    };
+  });
+}
+
 function normalizeTheme(theme) {
   return theme === "light" ? "light" : "dark";
 }
@@ -349,7 +371,7 @@ function loadState() {
       authProvider: authSnapshot?.provider || null,
       rememberLogin: Boolean(readStorage(window.localStorage, REMEMBERED_AUTH_KEY)),
       theme: normalizeTheme(saved.theme),
-      models: mergeModelCatalog(saved.models),
+      models: normalizeModelRuntime(mergeModelCatalog(saved.models)),
       skills: saved.skills || structuredClone(defaultState.skills),
       plugins: saved.plugins || structuredClone(defaultState.plugins),
       projects: saved.projects || structuredClone(defaultState.projects),
@@ -461,7 +483,14 @@ function modelOptionList() {
     groups.set(model.provider, group);
   });
   return [...groups.entries()].map(([provider, models]) => `<optgroup label="${escapeHtml(provider)}">${models.map((model) => {
-    const status = model.available ? "sẵn sàng" : "chưa kết nối";
+    const live = model.remoteAvailable === true && Boolean(config.apiBaseUrl);
+    const status = model.shared
+      ? config.apiBaseUrl
+        ? live ? "đã kết nối" : "đang kiểm tra"
+        : "demo cục bộ"
+      : model.available
+        ? config.apiBaseUrl ? "đã nhập key" : "chờ gateway"
+        : "chưa kết nối";
     return `<option value="${escapeHtml(model.id)}" ${model.id === state.activeModelId ? "selected" : ""} ${model.available ? "" : "disabled"}>${escapeHtml(model.name)} · ${status}</option>`;
   }).join("")}</optgroup>`).join("");
 }
@@ -495,28 +524,33 @@ function quotaMeter(model, compact = false) {
 function renderSidebar() {
   const pinnedProjects = state.projects.filter((project) => project.pinned).slice(0, 3);
   const pinnedThreads = state.threads.filter((thread) => thread.pinned).slice(0, 4);
+  const workspaceOpen = state.workspaceOpen !== false;
   return `
     <aside class="sidebar" id="sidebar">
       ${renderBrand()}
       <button class="button button-primary new-chat" data-action="new-chat"><span>＋</span> Đoạn chat mới</button>
-      <div class="nav-label">Không gian</div>
-      <nav aria-label="Điều hướng chính">
-        <div class="nav-list">
-          ${navItem("chat", "◌", "Cuộc trò chuyện", state.threads.length)}
-          ${navItem("pinned", "⚑", "Đã ghim", pinnedProjects.length + pinnedThreads.length)}
-          ${navItem("projects", "⌂", "Dự án", state.projects.length)}
-          ${navItem("library", "▦", "Thư viện", state.skills.length + state.plugins.length)}
-          ${navItem("usage", "◒", "AI & hạn mức", state.models.length)}
+      <section class="workspace-nav" aria-label="Không gian Bambuseae">
+        <button class="workspace-toggle" type="button" data-action="toggle-workspace" aria-expanded="${workspaceOpen}"><span class="workspace-toggle-left"><span class="workspace-icon">⌘</span><strong>Không gian</strong></span><span class="workspace-toggle-right"><small>${state.projects.length} dự án</small><span aria-hidden="true">${workspaceOpen ? "⌃" : "⌄"}</span></span></button>
+        <div class="workspace-panel ${workspaceOpen ? "open" : "collapsed"}">
+          <nav aria-label="Công cụ trong Không gian">
+            <div class="nav-list">
+              ${navItem("chat", "◌", "Cuộc trò chuyện", state.threads.length)}
+              ${navItem("pinned", "⚑", "Đã ghim", pinnedProjects.length + pinnedThreads.length)}
+              ${navItem("projects", "⌂", "Dự án", state.projects.length)}
+              ${navItem("library", "▦", "Thư viện", state.skills.length + state.plugins.length)}
+              ${navItem("usage", "◒", "AI & hạn mức", state.models.length)}
+            </div>
+          </nav>
+          <div class="sidebar-section">
+            <div class="nav-label">Đã ghim</div>
+            <div class="pinned-list">
+              ${pinnedProjects.map((project) => `<button class="pinned-item" data-action="select-project" data-project-id="${escapeHtml(project.id)}"><span>◆</span><span><strong>${escapeHtml(project.name)}</strong><small>Dự án</small></span></button>`).join("")}
+              ${pinnedThreads.map((thread) => `<button class="pinned-item" data-action="select-thread" data-thread-id="${escapeHtml(thread.id)}"><span>⚑</span><span><strong>${escapeHtml(thread.title)}</strong><small>Đoạn chat</small></span></button>`).join("")}
+              ${pinnedProjects.length + pinnedThreads.length ? "" : `<div class="pinned-empty">Chưa có mục nào được ghim.</div>`}
+            </div>
+          </div>
         </div>
-      </nav>
-      <div class="sidebar-section">
-        <div class="nav-label">Đã ghim</div>
-        <div class="pinned-list">
-          ${pinnedProjects.map((project) => `<button class="pinned-item" data-action="select-project" data-project-id="${escapeHtml(project.id)}"><span>◆</span><span><strong>${escapeHtml(project.name)}</strong><small>Dự án</small></span></button>`).join("")}
-          ${pinnedThreads.map((thread) => `<button class="pinned-item" data-action="select-thread" data-thread-id="${escapeHtml(thread.id)}"><span>⚑</span><span><strong>${escapeHtml(thread.title)}</strong><small>Đoạn chat</small></span></button>`).join("")}
-          ${pinnedProjects.length + pinnedThreads.length ? "" : `<div class="pinned-empty">Chưa có mục nào được ghim.</div>`}
-        </div>
-      </div>
+      </section>
       <div class="sidebar-footer">
         <div class="profile-mini">
           <div class="avatar">${escapeHtml(state.user.initial || "K")}</div>
@@ -533,15 +567,18 @@ function navItem(view, icon, label, count) {
 
 function renderTopbar() {
   const demo = !config.apiBaseUrl;
+  const liveCount = state.models.filter((model) => model.remoteAvailable === true).length;
+  const demoCount = state.models.filter((model) => model.shared && model.available).length;
+  const statusText = demo ? `Chưa có gateway · ${demoCount} AI mô phỏng` : `Gateway · ${liveCount}/${state.models.length} AI đã xác nhận`;
   return `
     <header class="topbar">
       <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(getProject().name)}</span><label class="topbar-model"><span>AI</span><select class="topbar-model-select" data-action="select-model" aria-label="Chọn AI nhanh">${modelOptionList()}</select></label></div>
-      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}">${demo ? "Bản mô phỏng cục bộ" : "API gateway đã kết nối"}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
+      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}" title="${demo ? "GitHub Pages chỉ là giao diện tĩnh; hãy cấu hình apiBaseUrl để gọi AI thật." : "Trạng thái được đọc từ API gateway; key cá nhân vẫn chỉ giữ trong phiên."}">${statusText}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
     </header>`;
 }
 
 function renderShell() {
-  return `<div class="app-shell">${renderSidebar()}<div class="content">${renderTopbar()}<main id="main-content">${renderView()}</main></div></div>`;
+  return `<div class="app-shell">${renderSidebar()}<div class="content">${renderTopbar()}<main id="main-content" class="${state.activeView === "chat" ? "chat-page" : ""}">${renderView()}</main></div></div>`;
 }
 
 function renderView() {
@@ -564,37 +601,21 @@ function renderChatView() {
   const thread = getThread();
   const model = getModel(state.activeModelId);
   const stats = usageStats(model);
-  const skills = state.skills.filter((skill) => project.skillIds?.includes(skill.id) && skill.enabled);
-  const plugins = state.plugins.filter((plugin) => project.pluginIds?.includes(plugin.id) && plugin.enabled);
   const handoff = state.lastHandoff && state.lastHandoff.threadId === thread.id ? state.lastHandoff : null;
+  const connectionLabel = model.remoteAvailable === true
+    ? "AI thật qua gateway"
+    : model.shared && !config.apiBaseUrl
+      ? "Mô phỏng cục bộ"
+      : model.shared
+        ? "Đang kiểm tra gateway"
+      : model.available
+        ? "Đã nhập key · chờ gateway"
+        : "Chưa kết nối";
   return `
-    ${renderHeading("Không gian hội thoại", "Tiếp tục mạch chuyện", "Chọn AI, giữ nguyên ngữ cảnh và làm việc trong cùng một dự án.", `<button class="button button-gold" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button>`)}
-    <section class="overview-grid" aria-label="AI đang hoạt động">
-      <article class="card model-overview">
-        <div class="model-overview-main"><div class="model-orb"><img src="./icon.svg" alt="" /></div><div class="model-overview-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)} · ${escapeHtml(model.status)}</span></div></div>
-        <div><label class="quota-label" for="chat-model-select">Chọn AI cho câu tiếp theo</label><select id="chat-model-select" class="model-select" data-action="select-model" aria-label="Chọn AI">${modelOptionList()}</select></div>
-        <div class="quota-strip">${quotaMeter(model)}</div>
-        <div class="model-handoff"><span class="tag">${stats.remainingPercent <= state.fallbackThreshold ? "⚠ sắp hết hạn mức" : "✓ có thể tiếp tục"}</span><button class="button button-quiet" data-action="handoff">Chuyển AI dự phòng →</button></div>
-      </article>
-      <article class="card card-pad">
-        <div class="section-head"><div><p class="section-title">Quy tắc chuyển AI</p><p>Tự động giữ mạch khi gặp giới hạn.</p></div><span class="tag">${state.autoFallback ? "Tự động" : "Thủ công"}</span></div>
-        <div class="metric-list"><div class="metric-line"><span>Ngưỡng cảnh báo</span><strong>${state.fallbackThreshold}% còn lại</strong></div><div class="metric-line"><span>AI dự phòng</span><strong>${escapeHtml(getFallbackModel(model.id)?.name || "Chưa có")}</strong></div><div class="metric-line"><span>Thread hiện tại</span><strong>${escapeHtml(thread.title)}</strong></div></div>
-        <button class="button button-quiet button-wide" data-action="view" data-view="usage">Xem toàn bộ hạn mức</button>
-      </article>
-    </section>
-    <div class="workspace-grid">
-      <section class="card conversation" aria-label="Đoạn chat hiện tại">
-        <div class="thread-bar"><div class="thread-title"><strong>${escapeHtml(thread.title)}</strong><span>${escapeHtml(project.name)} · ${thread.messages.length} tin nhắn${handoff ? ` · Đã chuyển từ ${escapeHtml(handoff.fromName)}` : ""}</span></div><div class="thread-actions"><button class="button button-icon button-quiet" aria-label="Ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">${thread.pinned ? "⚑" : "⚐"}</button><button class="button button-icon button-quiet" aria-label="Tách đoạn chat mới" data-action="branch-thread">↗</button></div></div>
-        <div class="messages" id="messages">${thread.messages.length ? thread.messages.map(renderMessage).join("") : renderEmptyChat()}</div>
-        <div class="suggestion-row"><button class="suggestion" data-action="select-suggestion" data-text="Tóm tắt những điểm quan trọng của mạch chuyện hiện tại.">Tóm tắt mạch chuyện</button><button class="suggestion" data-action="handoff">Chuyển sang AI khác</button><button class="suggestion" data-action="open-modal" data-modal="new-skill">＋ Thêm Skill</button></div>
-        <form class="composer" data-form="composer"><textarea name="prompt" rows="1" placeholder="Viết yêu cầu tiếp theo…" aria-label="Nội dung yêu cầu"></textarea><div class="composer-tools"><select class="model-mini" data-action="select-model" aria-label="AI cho tin nhắn">${modelOptionList()}</select><button class="send-button" type="submit" aria-label="Gửi">↑</button></div></form>
-      </section>
-      <aside class="inspector" aria-label="Thông tin dự án">
-        <section class="card project-card"><div class="project-row"><div><div class="project-name">${escapeHtml(project.name)}</div><p class="project-desc">${escapeHtml(project.description)}</p></div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><select class="project-select" data-action="select-project" aria-label="Chọn dự án">${state.projects.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === project.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select><div class="project-card-actions"><button class="button button-danger button-wide" type="button" data-action="delete-project" data-project-id="${escapeHtml(project.id)}">Xóa dự án</button></div></section>
-        <section class="card inspector-card"><div class="section-head"><p class="section-title">Skill đang dùng</p><button class="button button-icon button-quiet" aria-label="Mở thư viện Skill" data-action="view" data-view="library">＋</button></div><div class="chip-list">${skills.length ? skills.map((skill) => `<span class="tag skill-chip">${escapeHtml(skill.icon)} ${escapeHtml(skill.name)}</span>`).join("") : `<span class="empty-chip">Chưa gắn Skill</span>`}</div></section>
-        <section class="card inspector-card"><div class="section-head"><p class="section-title">Plugin đang dùng</p><button class="button button-icon button-quiet" aria-label="Mở thư viện Plugin" data-action="view" data-view="library">＋</button></div><div class="chip-list">${plugins.length ? plugins.map((plugin) => `<span class="tag plugin-chip">${escapeHtml(plugin.icon)} ${escapeHtml(plugin.name)}</span>`).join("") : `<span class="empty-chip">Chưa gắn Plugin</span>`}</div></section>
-      </aside>
-    </div>`;
+    <section class="chat-focus" aria-label="Không gian chat">
+      <header class="chat-focus-header"><div class="chat-focus-title"><div class="chat-context-line"><span class="eyebrow">Không gian hội thoại</span><span class="chat-context-separator">·</span><span class="chat-project-label">${escapeHtml(project.name)}</span></div><h1>${escapeHtml(thread.title)}</h1><div class="chat-meta"><span>${escapeHtml(model.name)}</span><span>· ${escapeHtml(connectionLabel)}</span><span>· ${Math.round(stats.remainingPercent)}% token còn lại</span>${handoff ? `<span>· Đã chuyển từ ${escapeHtml(handoff.fromName)}</span>` : ""}</div></div><div class="chat-focus-actions"><button class="button button-quiet" data-action="handoff">⇢ Chuyển AI</button><button class="button button-gold" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button></div></header>
+      <section class="card conversation conversation-focus" aria-label="Đoạn chat hiện tại"><div class="thread-bar"><div class="thread-title"><strong>${escapeHtml(thread.title)}</strong><span>${escapeHtml(project.name)} · ${thread.messages.length} tin nhắn</span></div><div class="thread-actions"><button class="button button-icon button-quiet" aria-label="Ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">${thread.pinned ? "⚑" : "⚐"}</button><button class="button button-icon button-quiet" aria-label="Tách đoạn chat mới" data-action="branch-thread">↗</button></div></div><div class="messages" id="messages">${thread.messages.length ? thread.messages.map(renderMessage).join("") : renderEmptyChat()}</div><div class="suggestion-row"><button class="suggestion" data-action="select-suggestion" data-text="Tóm tắt những điểm quan trọng của mạch chuyện hiện tại.">Tóm tắt mạch chuyện</button><button class="suggestion" data-action="handoff">Chuyển sang AI khác</button><button class="suggestion" data-action="open-modal" data-modal="new-skill">＋ Thêm Skill</button></div><form class="composer" data-form="composer"><textarea name="prompt" rows="1" placeholder="Viết yêu cầu tiếp theo…" aria-label="Nội dung yêu cầu"></textarea><div class="composer-tools"><select class="model-mini" data-action="select-model" aria-label="AI cho tin nhắn">${modelOptionList()}</select><button class="send-button" type="submit" aria-label="Gửi">↑</button></div></form></section>
+    </section>`;
 }
 
 function renderMessage(message) {
@@ -654,7 +675,7 @@ function renderUsageView() {
   const lowest = available.slice().sort((a, b) => usageStats(a).remainingPercent - usageStats(b).remainingPercent)[0];
   return `${renderHeading("Theo dõi sử dụng", "Hạn mức & token", "Theo dõi từng AI, nhận biết lúc sắp hết và chuyển sang mô hình dự phòng trước khi mạch chuyện bị ngắt.", `<button class="button button-gold" data-action="open-modal" data-modal="connection">＋ Kết nối AI</button>`)}
     <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Token đã dùng</span><strong>${formatNumber(totalUsed)}</strong><small>trên các AI đang bật</small></article><article class="card stat-card stat-blue"><span class="stat-label">Token còn lại</span><strong>${formatNumber(Math.max(0, totalLimit - totalUsed))}</strong><small>theo hạn mức hiện tại</small></article><article class="card stat-card stat-gold"><span class="stat-label">AI sắp hết nhất</span><strong>${lowest ? Math.round(usageStats(lowest).remainingPercent) : 0}%</strong><small>${lowest ? escapeHtml(lowest.name) : "Chưa có dữ liệu"}</small></article><article class="card stat-card"><span class="stat-label">Cách đo</span><strong>${config.apiBaseUrl ? "API" : "Demo"}</strong><small>${config.apiBaseUrl ? "nhật ký gateway" : "ước tính cục bộ"}</small></article></div>
-    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>Tất cả AI đều có adapter riêng; mục chưa kết nối sẽ được bật trong Cài đặt.</p></div><span class="tag">${state.models.length} AI · ${available.length} sẵn sàng</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
+    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>Tất cả AI đều có adapter riêng; mục chưa kết nối sẽ được bật trong Cài đặt.</p></div><span class="tag">${state.models.length} AI · ${available.length} đang bật</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
     <div class="section-head usage-detail-heading"><div><p class="section-title">Chi tiết AI đang bật</p><p>Token được cập nhật theo gateway hoặc ước tính cục bộ.</p></div></div>
     <section class="grid-2" style="margin-bottom:1rem">${available.map((model) => `<article class="card card-pad"><div class="section-head"><div><p class="section-title">${escapeHtml(model.name)}</p><p>${escapeHtml(model.provider)} · ${escapeHtml(model.tier)}</p></div><span class="tag">${Math.round(usageStats(model).remainingPercent)}% còn</span></div>${quotaMeter(model)}<div class="metric-list" style="margin-top:.9rem"><div class="metric-line"><span>Đã dùng</span><strong>${exactNumber(usageStats(model).used)} token</strong></div><div class="metric-line"><span>Còn lại</span><strong>${exactNumber(usageStats(model).remaining)} token</strong></div><div class="metric-line"><span>Làm mới</span><strong>${escapeHtml(model.reset)}</strong></div></div></article>`).join("")}</section>
     <section class="card card-pad"><div class="section-head"><div><p class="section-title">Nhật ký gần đây</p><p>Input và output được ghi theo từng câu trả lời.</p></div><span class="tag">${state.usageLog.length} lượt</span></div><div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>AI</th><th>Input</th><th>Output</th><th>Tổng</th><th>Nguồn</th></tr></thead><tbody>${state.usageLog.slice(0, 10).map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(getModel(entry.modelId).name)}</td><td>${exactNumber(entry.input)}</td><td>${exactNumber(entry.output)}</td><td><strong>${exactNumber(entry.total)}</strong></td><td>${escapeHtml(entry.source)}</td></tr>`).join("")}</tbody></table></div></section>`;
@@ -663,17 +684,22 @@ function renderUsageView() {
 function renderModelCatalogCard(model) {
   const stats = usageStats(model);
   const ready = Boolean(model.available);
+  const demo = model.shared && !config.apiBaseUrl;
+  const live = model.remoteAvailable === true;
   const initials = String(model.provider || "AI").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const action = model.shared
     ? `<button class="button button-quiet" type="button" data-action="view" data-view="chat">Mở chat</button>`
     : `<button class="button button-quiet" type="button" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${ready ? "Quản lý" : "Kết nối"}</button>`;
-  return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${ready ? "" : "demo"}">${ready ? "Sẵn sàng" : "Chưa kết nối"}</span></div>${ready ? quotaMeter(model, true) : `<p class="model-catalog-note">${escapeHtml(model.note || "Kết nối AI trong Cài đặt")}</p>`}<div class="model-catalog-footer"><span>${ready ? `${Math.round(stats.remainingPercent)}% token còn lại` : "Chưa có số liệu token"}</span>${action}</div></article>`;
+  const statusLabel = demo ? "Demo cục bộ" : live ? "AI thật" : model.shared ? "Đang kiểm tra" : ready ? "Đã nhập key" : "Chưa kết nối";
+  const statusClass = demo || !ready ? "demo" : "";
+  const note = demo ? "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng." : model.note || "Kết nối AI trong Cài đặt";
+  return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${statusClass}">${statusLabel}</span></div>${ready ? `${quotaMeter(model, true)}${demo ? `<p class="model-catalog-note">${escapeHtml(note)} Hạn mức hiện là số liệu mô phỏng.</p>` : ""}` : `<p class="model-catalog-note">${escapeHtml(note)}</p>`}<div class="model-catalog-footer"><span>${ready ? `${Math.round(stats.remainingPercent)}% token còn lại${demo ? " · mô phỏng" : ""}` : "Chưa có số liệu token"}</span>${action}</div></article>`;
 }
 
 function renderSettingsView() {
   return `${renderHeading("Thiết lập", "Cài đặt Bambuseae", "Kết nối AI, điều chỉnh cách chuyển tiếp và kiểm tra trạng thái bảo mật.", `<button class="button button-primary" data-action="open-modal" data-modal="connection">＋ Thêm kết nối</button>`)}
     <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ được bật khi có API gateway.</p></div><span class="status-pill ${config.googleOAuthEnabled ? "" : "demo"}">${config.googleOAuthEnabled ? "Google đã cấu hình" : "Chưa cấu hình"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)} · ${escapeHtml(authProviderLabel())}</span></div><button class="button button-quiet" data-action="google-login">${state.authProvider === "google" ? "Đã liên kết Google" : "Liên kết Google"}</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất</button></section>
-      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI</p><p>Khóa cá nhân chỉ giữ trong phiên trình duyệt của bản V1.</p></div></div>${state.models.filter((model) => !model.shared).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.available ? "Đã ghi nhận trong phiên" : "Chưa kết nối"} · hạn mức ${exactNumber(model.limit)} token</span></div><button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Cập nhật" : "Kết nối"}</button></div>`).join("")}</section></div>
+      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI</p><p>${config.apiBaseUrl ? "Gateway đã khai báo; AI thật chỉ hiện sau khi gateway xác nhận." : "Chưa có gateway; key cá nhân chỉ giữ tạm trong phiên trình duyệt."}</p></div></div>${state.models.filter((model) => !model.shared).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.remoteAvailable === true ? "AI thật qua gateway" : model.available ? "Đã nhập key · chờ gateway" : "Chưa kết nối"} · hạn mức ${exactNumber(model.limit)} token</span></div><button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Kiểm tra" : "Kết nối"}</button></div>`).join("")}</section></div>
       <div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Chuyển AI tự động</p><p>Giữ cùng Thread khi mô hình gần hoặc đã hết hạn mức.</p></div></div><div class="setting-row"><div class="setting-copy"><strong>Tự động chuyển AI</strong><span>Chuyển sang mô hình còn token khi cần.</span></div><input type="checkbox" data-setting="autoFallback" ${state.autoFallback ? "checked" : ""} aria-label="Tự động chuyển AI" /></div><div class="setting-row"><div class="setting-copy"><strong>Ngưỡng cảnh báo</strong><span>Bắt đầu cảnh báo khi còn dưới mức này.</span></div><div class="range-wrap"><input type="range" min="1" max="50" step="1" value="${state.fallbackThreshold}" data-setting="fallbackThreshold" aria-label="Ngưỡng cảnh báo" /><strong id="threshold-value">${state.fallbackThreshold}%</strong></div></div></section><section class="card card-pad"><div class="section-head"><div><p class="section-title">Bảo mật dữ liệu</p><p>Bản GitHub không chứa bí mật.</p></div></div><div class="security-note"><strong>Đang bảo vệ:</strong> config.js không có API key, khóa cá nhân không được lưu vào localStorage, và dữ liệu bản demo chỉ nằm trong trình duyệt này.</div><div class="security-note" style="margin-top:.6rem"><strong>Khi triển khai thật:</strong> dùng backend có Google OAuth, RLS theo tài khoản, mã hóa dữ liệu và gateway có giới hạn tốc độ. AI vẫn nhận nội dung cần xử lý để tạo câu trả lời.</div><button class="button button-danger" style="margin-top:.9rem" data-action="reset-demo">Xóa dữ liệu bản demo</button></section></div></div>`;
 }
 
@@ -742,6 +768,12 @@ function toast(message, tone = "") {
 
 function setActiveView(view) {
   state.activeView = view;
+  saveState();
+  render();
+}
+
+function toggleWorkspace() {
+  state.workspaceOpen = state.workspaceOpen === false;
   saveState();
   render();
 }
@@ -917,9 +949,11 @@ async function callConfiguredApi(model, thread) {
     skills: skillContext,
     plugins: pluginContext
   });
+  const headers = { "Content-Type": "application/json" };
+  if (sessionKeys[model.id]) headers["X-Bambuseae-Provider-Key"] = sessionKeys[model.id];
   const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}${request.path}`, {
     method: request.method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(request.body)
   });
   if (!response.ok) throw new Error(`Gateway ${response.status}`);
@@ -957,6 +991,11 @@ async function sendMessage(form) {
   if (config.apiBaseUrl) {
     try {
       result = await callConfiguredApi(model, thread);
+      if (result) {
+        model.remoteAvailable = true;
+        model.status = "Đã kết nối qua gateway";
+        model.note = "AI thật đang chạy qua gateway đã cấu hình";
+      }
     } catch (error) {
       toast("Gateway chưa trả lời, đang dùng phản hồi mô phỏng để không làm gián đoạn Thread.", "warn");
     }
@@ -990,7 +1029,10 @@ function openModal(kind, modelId = "") {
     modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Thêm Plugin</h2><p>Plugin cần mô tả quyền trước khi dùng.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-plugin"><div class="field"><label for="plugin-name">Tên Plugin</label><input id="plugin-name" name="name" placeholder="Ví dụ: Đọc thư mục tài liệu" required /></div><div class="field"><label for="plugin-description">Mô tả</label><input id="plugin-description" name="description" placeholder="Plugin thực hiện việc gì?" required /></div><div class="field"><label for="plugin-permission">Quyền truy cập</label><select id="plugin-permission" name="permission"><option>Chỉ đọc</option><option>Đọc và ghi</option><option>Gọi Internet</option><option>Cần xác nhận mỗi lần</option></select></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Thêm Plugin</button></div></form></div>`;
   } else {
     const limit = targetModel?.limit || 250000;
-    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên bản V1, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId">${state.models.filter((model) => !model.shared).map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="field"><label for="connection-limit">Hạn mức token bạn muốn theo dõi</label><input id="connection-limit" name="limit" type="number" min="1" value="${limit}" required /></div><div class="security-note"><strong>Lưu ý:</strong> bản GitHub tĩnh chưa thể xác minh API key hoặc đồng bộ an toàn; bản V1 chỉ ghi nhận key trong bộ nhớ phiên. Muốn dùng thật cho nhiều tài khoản, hãy cấu hình API gateway riêng.</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
+    const gatewayNote = config.apiBaseUrl
+      ? "Gateway đã được khai báo; sau khi lưu, gateway cần trả model này ở /api/models để xác nhận AI thật."
+      : "Chưa có gateway. GitHub Pages không thể gọi AI thật trực tiếp; lúc này key chỉ được giữ tạm trong phiên và không nên dùng trên thiết bị lạ.";
+    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId">${state.models.filter((model) => !model.shared).map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="field"><label for="connection-limit">Hạn mức token bạn muốn theo dõi</label><input id="connection-limit" name="limit" type="number" min="1" value="${limit}" required /></div><div class="security-note"><strong>Trạng thái:</strong> ${gatewayNote}</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
   }
   modal.showModal();
 }
@@ -1021,6 +1063,54 @@ function startGoogleAuth() {
   toast("Google OAuth chưa được cấu hình. Hãy dùng email bản thử hoặc cấu hình backend trong config.js.", "warn");
 }
 
+async function hydrateRemoteModels() {
+  if (!config.apiBaseUrl) return;
+  try {
+    const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/api/models`, { credentials: "include" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!Array.isArray(payload.models)) return;
+    const remoteById = new Map(payload.models.filter((model) => model?.id).map((model) => [model.id, model]));
+    let changed = false;
+    state.models = state.models.map((model) => {
+      const remote = remoteById.get(model.id);
+      if (!remote) {
+        if (model.shared && model.available) {
+          changed = true;
+          return { ...model, available: false, remoteAvailable: false, status: "Gateway chưa công bố", note: "Gateway chưa bật model này" };
+        }
+        return model;
+      }
+      const next = { ...model };
+      if (typeof remote.available === "boolean") {
+        next.remoteAvailable = remote.available;
+        next.available = remote.available;
+      }
+      if (Number.isFinite(Number(remote.used))) next.used = Number(remote.used);
+      if (Number.isFinite(Number(remote.limit))) next.limit = Number(remote.limit);
+      if (remote.reset) next.reset = String(remote.reset);
+      if (remote.status) next.status = String(remote.status);
+      if (remote.note) next.note = String(remote.note);
+      if (JSON.stringify(next) !== JSON.stringify(model)) changed = true;
+      return next;
+    });
+    const active = getModel(state.activeModelId);
+    if (active && !active.available) {
+      const next = state.models.find((model) => model.available);
+      if (next) {
+        state.activeModelId = next.id;
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveState();
+      render();
+    }
+  } catch {
+    // Gateway chưa online thì giao diện vẫn giữ chế độ mô phỏng.
+  }
+}
+
 async function hydrateRemoteSession() {
   if (!config.apiBaseUrl || state.authenticated) return;
   try {
@@ -1043,6 +1133,7 @@ function handleClick(event) {
   const action = target.dataset.action;
   if (action === "view") return setActiveView(target.dataset.view);
   if (action === "toggle-theme") return toggleTheme();
+  if (action === "toggle-workspace") return toggleWorkspace();
   if (action === "auth-mode") return setAuthMode(target.dataset.mode);
   if (action === "demo-guest") return enterGuestMode();
   if (action === "toggle-sidebar") return document.body.classList.toggle("sidebar-open");
@@ -1227,14 +1318,18 @@ async function handleSubmit(event) {
     const key = String(data.get("key") || "").trim();
     if (!model || !key) return;
     sessionKeys[model.id] = key;
-    model.available = true;
-    model.status = "Đã ghi nhận trong phiên";
+    const gatewayConfigured = Boolean(config.apiBaseUrl);
+    model.available = gatewayConfigured;
+    delete model.remoteAvailable;
+    model.status = "Đã nhập key · chờ gateway";
     model.limit = Math.max(1, Number(data.get("limit")) || model.limit);
-    model.note = "Đã ghi nhận trong phiên; cần gateway để gọi thật";
+    model.note = gatewayConfigured ? "Key chỉ giữ trong phiên; gateway sẽ xác nhận AI ở /api/models" : "Key chỉ được giữ tạm; cần cấu hình apiBaseUrl để gọi AI thật";
     const existing = state.connections.find((connection) => connection.modelId === model.id);
     if (existing) existing.updatedAt = nowTime();
     else state.connections.push({ id: uid("connection"), modelId: model.id, updatedAt: nowTime() });
-    closeModal(); saveState(); render(); toast(`${model.name} đã được ghi nhận trong phiên này.`, "success");
+    closeModal(); saveState(); render();
+    toast(gatewayConfigured ? `${model.name} đã nhận key; đang chờ gateway xác nhận.` : `${model.name} chưa kết nối: Bambuseae chưa có gateway.`, gatewayConfigured ? "success" : "warn");
+    if (gatewayConfigured) void hydrateRemoteModels();
   }
 }
 
@@ -1245,3 +1340,4 @@ document.addEventListener("submit", handleSubmit);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 render();
 void hydrateRemoteSession();
+void hydrateRemoteModels();

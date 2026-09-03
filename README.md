@@ -17,6 +17,7 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 - Lưu dữ liệu bản thử trong trình duyệt bằng `localStorage`.
 - PWA có manifest và service worker, có thể thêm vào màn hình chính iPhone.
 - Có sẵn điểm nối `POST /api/chat` để kết nối API gateway thật.
+- Màn hình chat tập trung gần toàn màn hình; Chat, Ghim, Dự án, Thư viện và Hạn mức nằm trong mục **Không gian** có thể thu gọn.
 
 Tài khoản email trong bản GitHub là tài khoản bản thử trên từng thiết bị. Mật khẩu không được lưu dạng rõ; bản demo lưu mã băm có muối bằng Web Crypto và chỉ lưu một phiên đăng nhập khi người dùng chọn ghi nhớ. Muốn đăng nhập cùng một tài khoản trên PC và iPhone, cần kết nối backend có database, xác minh email và cookie phiên `HttpOnly`.
 
@@ -53,7 +54,7 @@ Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm
 4. Chọn **Deploy from a branch**, branch `main`, thư mục `/root`, rồi lưu.
 5. Mở địa chỉ GitHub Pages bằng Safari trên iPhone → **Share → Add to Home Screen**.
 
-GitHub Pages chỉ phục vụ giao diện tĩnh. Bản V1 có thể mở và dùng ở chế độ mô phỏng ngay. Đăng nhập Google, đồng bộ giữa thiết bị, AI dùng chung và hạn mức thật cần một API gateway/backend riêng.
+GitHub Pages chỉ phục vụ giao diện tĩnh. Bản V1 có thể mở và dùng ở chế độ mô phỏng ngay. Đăng nhập Google, đồng bộ giữa thiết bị, AI dùng chung và hạn mức thật cần một API gateway/backend riêng. Vì vậy khi chưa có `apiBaseUrl`, giao diện cố ý ghi **Mô phỏng cục bộ**, không ghi là AI đã kết nối.
 
 ## Kết nối backend
 
@@ -66,6 +67,10 @@ window.BAMBUSEAE_CONFIG = {
   appName: "Bambuseae"
 };
 ```
+
+API gateway nên chịu trách nhiệm xác thực người dùng, kiểm tra quyền dự án, gọi nhà cung cấp AI, chuẩn hóa trường `usage`, ghi hạn mức và áp dụng rate limit. Gateway starter đi kèm đã có đường gọi tối thiểu cho AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere. Với AI cá nhân, frontend chỉ gửi key tạm thời qua HTTPS trong header `X-Bambuseae-Provider-Key`; gateway không được ghi header này vào log.
+
+Tên model hiển thị ở frontend là mã Bambuseae. Model thật cần đặt trên server bằng các biến như `BAMBUSEAE_OPENAI_MODEL`, `BAMBUSEAE_ANTHROPIC_MODEL`, `BAMBUSEAE_GOOGLE_MODEL`… trong `.env`, không đặt trong repository.
 
 API gateway nên chịu trách nhiệm xác thực người dùng, kiểm tra quyền dự án, gọi nhà cung cấp AI, chuẩn hóa trường `usage`, ghi hạn mức và áp dụng rate limit. Giao diện chấp nhận các dạng phản hồi phổ biến:
 
@@ -105,7 +110,7 @@ Giao diện mặc định vẫn là nền tối để giữ phong cách Bambusea
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v6` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, đóng rồi mở lại trang GitHub Pages; nếu cache chưa đổi, xóa PWA cũ khỏi màn hình chính và thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại dùng `bambuseae-shell-v7` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, đóng rồi mở lại trang GitHub Pages; nếu cache chưa đổi, xóa PWA cũ khỏi màn hình chính và thêm lại.
 
 ## Chạy kiểm tra nhanh
 

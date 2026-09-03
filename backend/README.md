@@ -8,6 +8,7 @@ Request:
 
 ```json
 {
+  "provider": "bambuseae",
   "model": "bambuseae-free",
   "messages": [{ "role": "user", "content": "..." }],
   "project": { "id": "...", "name": "...", "description": "..." },
@@ -15,6 +16,8 @@ Request:
   "plugins": [{ "name": "...", "permission": "Chỉ đọc" }]
 }
 ```
+
+Với AI cá nhân, frontend gửi API key tạm thời trong header `X-Bambuseae-Provider-Key` qua HTTPS. Gateway chọn provider từ trường `provider`, đọc tên model thật từ biến môi trường tương ứng và tuyệt đối không ghi header này vào log. AI dùng chung dùng `BAMBUSEAE_SHARED_*` ở phía server.
 
 ## Hợp đồng tài khoản cần triển khai
 
@@ -54,8 +57,8 @@ Response tối thiểu:
 
 ## Khuyến nghị triển khai
 
-Backend có thể chạy trên VPS/Cloudflare Worker/serverless riêng. `server.mjs` là gateway starter không cần npm package, dùng được với một endpoint OpenAI-compatible cho AI dùng chung. Tạo biến môi trường theo `.env.example`, chạy `node backend/server.mjs`, rồi đặt `apiBaseUrl` trong `config.js`.
+Backend có thể chạy trên VPS/Cloudflare Worker/serverless riêng. `server.mjs` là gateway starter không cần npm package, hỗ trợ AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere theo `.env.example`. Tạo biến môi trường, chạy `node backend/server.mjs`, rồi đặt `apiBaseUrl` trong `config.js`.
 
-Gateway starter chưa phải backend nhiều người dùng hoàn chỉnh: chưa có Google OAuth, database, session, đồng bộ dự án hoặc kho key cá nhân. Trước khi công khai, phải thêm các lớp đó, xác thực mọi request và ghi usage theo user/project. Không đưa `.env` hoặc API key lên GitHub.
+Gateway starter vẫn chưa phải backend nhiều người dùng hoàn chỉnh: chưa có Google OAuth, database, session, đồng bộ dự án hoặc kho key cá nhân bền vững. Trước khi công khai, phải thêm các lớp đó, xác thực mọi request và ghi usage theo user/project. Không đưa `.env` hoặc API key lên GitHub.
 
 Database production nên có các bảng `profiles`, `projects`, `threads`, `messages`, `skills`, `plugins`, `project_members`, `project_skills`, `project_plugins`, `ai_connections` và `usage_events`. API key cá nhân cần được mã hóa, kiểm tra quyền và xóa được.
