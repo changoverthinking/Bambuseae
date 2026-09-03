@@ -1,18 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Bụi tre Bambuseae</title>
+  <desc id="desc">Bảy thân tre xanh mọc thành một bụi trên nền xanh đậm.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#162a34"/>
-      <stop offset="1" stop-color="#081016"/>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17392b"/>
+      <stop offset="0.55" stop-color="#0d211b"/>
+      <stop offset="1" stop-color="#07120f"/>
+    </linearGradient>
+    <linearGradient id="stalkBack" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#397c4d"/>
+      <stop offset="0.52" stop-color="#79c766"/>
+      <stop offset="1" stop-color="#c5eb88"/>
+    </linearGradient>
+    <linearGradient id="stalkFront" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#4a9b56"/>
+      <stop offset="0.55" stop-color="#98df6e"/>
+      <stop offset="1" stop-color="#e1f39b"/>
     </linearGradient>
     <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#8fdc68"/>
-      <stop offset="1" stop-color="#e5c36a"/>
+      <stop offset="0" stop-color="#4caa5d"/>
+      <stop offset="0.6" stop-color="#a6e574"/>
+      <stop offset="1" stop-color="#e4c36c"/>
     </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="14" stdDeviation="13" flood-color="#020805" flood-opacity=".42"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="126" fill="url(#bg)"/>
-  <path d="M254 385c-8-82-12-158 9-249" fill="none" stroke="#cbe88a" stroke-width="22" stroke-linecap="round"/>
-  <path d="M257 255c-65-7-101-37-121-89 61-4 103 17 121 89Z" fill="url(#leaf)"/>
-  <path d="M263 198c36-61 79-80 135-71-17 52-60 83-135 71Z" fill="url(#leaf)"/>
-  <path d="M260 318c-57-6-91-31-110-73 57-5 94 15 110 73Z" fill="#9ce374" opacity=".9"/>
-  <circle cx="257" cy="385" r="21" fill="#e5c36a"/>
+
+  <rect x="8" y="8" width="496" height="496" rx="128" fill="url(#background)"/>
+  <circle cx="380" cy="116" r="96" fill="#b4e978" opacity=".06"/>
+  <path d="M64 413c73-28 311-32 384 0" fill="none" stroke="#07150f" stroke-width="30" stroke-linecap="round" opacity=".7"/>
+
+  <g fill="none" stroke-linecap="round">
+    <!-- Bảy thân tre riêng biệt -->
+    <path d="M101 407C98 345 105 278 122 204" stroke="url(#stalkBack)" stroke-width="19"/>
+    <path d="M143 409C139 318 148 228 158 135" stroke="url(#stalkBack)" stroke-width="21"/>
+    <path d="M188 411C185 342 194 257 207 181" stroke="url(#stalkBack)" stroke-width="18"/>
+    <path d="M240 414C236 300 245 186 255 83" stroke="url(#stalkFront)" stroke-width="23"/>
+    <path d="M294 412C299 323 294 220 291 132" stroke="url(#stalkFront)" stroke-width="20"/>
+    <path d="M345 409C351 334 346 255 335 169" stroke="url(#stalkBack)" stroke-width="19"/>
+    <path d="M394 407C402 340 391 269 374 211" stroke="url(#stalkBack)" stroke-width="18"/>
+  </g>
+
+  <g fill="none" stroke="#21633e" stroke-width="7" stroke-linecap="round" opacity=".86">
+    <path d="M104 337l17 2M105 282l16 2M112 235l15 3"/>
+    <path d="M142 344l19 1M145 278l18 2M149 211l17 2M153 162l15 2"/>
+    <path d="M188 354l18 1M190 296l17 2M198 234l16 2"/>
+    <path d="M238 349l22 1M239 285l20 2M242 220l19 2M247 153l18 2M250 105l16 2"/>
+    <path d="M293 351l20-1M296 287l19-1M294 220l18-1M292 161l17-1"/>
+    <path d="M345 350l18-2M348 296l18-2M344 237l17-2M339 185l16-2"/>
+    <path d="M395 351l17-3M394 298l17-3M387 246l17-3"/>
+  </g>
+
+  <g fill="url(#leaf)" opacity=".96">
+    <path d="M123 205C91 161 60 149 35 160c19 37 49 59 88 45Z"/>
+    <path d="M154 143c31-43 65-59 95-48-13 39-43 62-95 48Z"/>
+    <path d="M206 184c-33-38-65-47-91-33 20 34 50 47 91 33Z"/>
+    <path d="M254 86c-25-42-23-74 0-94 24 33 25 64 0 94Z"/>
+    <path d="M255 112c38-37 72-43 97-26-23 32-54 43-97 26Z"/>
+    <path d="M291 134c-4-48 13-76 43-89 8 42-4 70-43 89Z"/>
+    <path d="M335 171c35-35 67-41 91-24-22 31-51 42-91 24Z"/>
+    <path d="M374 213c27-33 55-43 79-31-18 32-43 44-79 31Z"/>
+  </g>
+
+  <path d="M84 421c63-18 282-20 344 0" fill="none" stroke="#b4e978" stroke-width="8" stroke-linecap="round" opacity=".75"/>
 </svg>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "bambuseae-shell-v3";
+const CACHE_NAME = "bambuseae-shell-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,6 +7,9 @@ const APP_SHELL = [
   "./config.js",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png",
   "./providers/registry.js",
   "./providers/bambuseae-free/models.js",
   "./providers/bambuseae-free/adapter.js",

@@ -18,6 +18,7 @@ const toastRegion = document.querySelector("#toast-region");
 const defaultState = {
   authenticated: false,
   user: { name: "Khách dùng thử", email: "demo@bambuseae.local", initial: "K" },
+  theme: "dark",
   activeView: "chat",
   activeProjectId: "project-aig",
   activeThreadId: "thread-world",
@@ -206,6 +207,10 @@ function mergeModelCatalog(savedModels) {
   ];
 }
 
+function normalizeTheme(theme) {
+  return theme === "light" ? "light" : "dark";
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -213,6 +218,7 @@ function loadState() {
     return {
       ...structuredClone(defaultState),
       ...saved,
+      theme: normalizeTheme(saved.theme),
       models: mergeModelCatalog(saved.models),
       skills: saved.skills || structuredClone(defaultState.skills),
       plugins: saved.plugins || structuredClone(defaultState.plugins),
@@ -228,6 +234,28 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function applyTheme() {
+  const theme = normalizeTheme(state.theme);
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) themeMeta.setAttribute("content", theme === "light" ? "#f4f8f3" : "#091116");
+}
+
+function themeButtonMarkup(className = "") {
+  const isLight = state.theme === "light";
+  const nextLabel = isLight ? "Chuyển sang giao diện tối" : "Chuyển sang giao diện sáng";
+  return `<button class="button button-icon theme-toggle ${className}" type="button" data-action="toggle-theme" aria-label="${nextLabel}" title="${nextLabel}"><span aria-hidden="true">${isLight ? "☾" : "☼"}</span><span class="sr-only">${nextLabel}</span></button>`;
+}
+
+function toggleTheme() {
+  state.theme = state.theme === "light" ? "dark" : "light";
+  applyTheme();
+  saveState();
+  render();
+  toast(state.theme === "light" ? "Đã chuyển sang giao diện sáng." : "Đã chuyển sang giao diện tối.", "success");
 }
 
 function uid(prefix) {
@@ -296,6 +324,10 @@ function modelOptionList() {
   }).join("");
 }
 
+function renderBrand() {
+  return `<div class="brand"><div class="brand-mark"><img src="./icon.svg" alt="" /></div><div><div class="brand-name">Bambuseae</div><span class="brand-sub">AI workspace</span></div></div>`;
+}
+
 function modelPill(model) {
   if (!model) return "";
   return `<span class="model-chip"><span>${escapeHtml(model.name)}</span><span>· ${escapeHtml(model.tier)}</span></span>`;
@@ -323,10 +355,7 @@ function renderSidebar() {
   const pinnedThreads = state.threads.filter((thread) => thread.pinned).slice(0, 4);
   return `
     <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="brand-mark">B·</div>
-        <div><div class="brand-name">Bambuseae</div><span class="brand-sub">AI workspace</span></div>
-      </div>
+      ${renderBrand()}
       <button class="button button-primary new-chat" data-action="new-chat"><span>＋</span> Đoạn chat mới</button>
       <div class="nav-label">Không gian</div>
       <nav aria-label="Điều hướng chính">
@@ -365,7 +394,7 @@ function renderTopbar() {
   return `
     <header class="topbar">
       <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(getProject().name)}</span></div>
-      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}">${demo ? "Bản mô phỏng cục bộ" : "API gateway đã kết nối"}</span><button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
+      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}">${demo ? "Bản mô phỏng cục bộ" : "API gateway đã kết nối"}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
     </header>`;
 }
 
@@ -400,7 +429,7 @@ function renderChatView() {
     ${renderHeading("Không gian hội thoại", "Tiếp tục mạch chuyện", "Chọn AI, giữ nguyên ngữ cảnh và làm việc trong cùng một dự án.", `<button class="button button-gold" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button>`)}
     <section class="overview-grid" aria-label="AI đang hoạt động">
       <article class="card model-overview">
-        <div class="model-overview-main"><div class="model-orb">B</div><div class="model-overview-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)} · ${escapeHtml(model.status)}</span></div></div>
+        <div class="model-overview-main"><div class="model-orb"><img src="./icon.svg" alt="" /></div><div class="model-overview-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)} · ${escapeHtml(model.status)}</span></div></div>
         <div><label class="quota-label" for="chat-model-select">Chọn AI cho câu tiếp theo</label><select id="chat-model-select" class="model-select" data-action="select-model" aria-label="Chọn AI">${modelOptionList()}</select></div>
         <div class="quota-strip">${quotaMeter(model)}</div>
         <div class="model-handoff"><span class="tag">${stats.remainingPercent <= state.fallbackThreshold ? "⚠ sắp hết hạn mức" : "✓ có thể tiếp tục"}</span><button class="button button-quiet" data-action="handoff">Chuyển AI dự phòng →</button></div>
@@ -430,7 +459,8 @@ function renderMessage(message) {
   const model = message.modelId ? getModel(message.modelId) : null;
   const roleLabel = message.role === "user" ? "Bạn" : "Bambuseae";
   const sourceLabel = message.role === "user" ? "" : `${escapeHtml(model?.name || "AI")} · ${escapeHtml(message.source || "Mô phỏng")}`;
-  return `<article class="message ${message.role === "user" ? "user" : "assistant"}"><div class="message-avatar">${message.role === "user" ? "U" : "B"}</div><div class="message-stack"><div class="message-meta"><span>${roleLabel}</span>${sourceLabel ? `<span>· ${sourceLabel}</span>` : ""}<span>${escapeHtml(message.time || "")}</span><button class="message-pin ${message.pinned ? "pinned" : ""}" aria-label="${message.pinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn"}" data-action="toggle-message-pin" data-message-id="${escapeHtml(message.id)}">${message.pinned ? "⚑" : "⚐"}</button></div><div class="message-bubble">${formatText(message.content)}</div></div></article>`;
+  const avatar = message.role === "user" ? "U" : `<img src="./icon.svg" alt="" />`;
+  return `<article class="message ${message.role === "user" ? "user" : "assistant"}"><div class="message-avatar">${avatar}</div><div class="message-stack"><div class="message-meta"><span>${roleLabel}</span>${sourceLabel ? `<span>· ${sourceLabel}</span>` : ""}<span>${escapeHtml(message.time || "")}</span><button class="message-pin ${message.pinned ? "pinned" : ""}" aria-label="${message.pinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn"}" data-action="toggle-message-pin" data-message-id="${escapeHtml(message.id)}">${message.pinned ? "⚑" : "⚐"}</button></div><div class="message-bubble">${formatText(message.content)}</div></div></article>`;
 }
 
 function renderEmptyChat() {
@@ -500,10 +530,11 @@ function renderPinnedView() {
 }
 
 function renderAuth() {
-  return `<div class="auth-screen"><section class="auth-art"><div class="brand"><div class="brand-mark">B·</div><div><div class="brand-name">Bambuseae</div><span class="brand-sub">AI workspace</span></div></div><p class="eyebrow">Một nơi cho mọi mạch suy nghĩ</p><h1>Đổi AI.<br><span>Không đổi ngữ cảnh.</span></h1><p>Chọn mô hình phù hợp, gắn Skill và Plugin, theo dõi token, rồi tiếp tục cùng dự án ngay cả khi AI hiện tại đã chạm giới hạn.</p><div class="auth-notes"><span class="auth-note">⇢ Context Handoff</span><span class="auth-note">◒ Token Monitor</span><span class="auth-note">▦ Project Library</span></div></section><section class="auth-card"><span class="status-pill demo">Bản thử cục bộ đã sẵn sàng</span><h2>Đăng nhập Bambuseae</h2><p>Tài khoản thật sẽ đồng bộ dự án giữa điện thoại và máy tính sau khi cấu hình Google OAuth.</p><button class="google-button" type="button" data-action="google-login">G  Tiếp tục với Google</button><div class="divider">hoặc dùng bản thử</div><form data-form="local-login"><div class="field"><label for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" value="demo@bambuseae.local" required /></div><div class="field"><label for="login-password">Mật khẩu</label><input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Chỉ dùng cho bản thử" required /></div><button class="button button-primary button-wide" type="submit">Vào không gian làm việc</button></form><p class="auth-footnote">Bản thử lưu dữ liệu trên thiết bị hiện tại. Không nhập mật khẩu Gmail vào đây. Khi bật Google OAuth, Bambuseae sẽ chuyển bạn sang luồng đăng nhập chính thức của Google.</p></section></div>`;
+  return `<div class="auth-screen">${themeButtonMarkup("theme-toggle-floating")}<section class="auth-art">${renderBrand()}<p class="eyebrow">Một nơi cho mọi mạch suy nghĩ</p><h1>Đổi AI.<br><span>Không đổi ngữ cảnh.</span></h1><p>Chọn mô hình phù hợp, gắn Skill và Plugin, theo dõi token, rồi tiếp tục cùng dự án ngay cả khi AI hiện tại đã chạm giới hạn.</p><div class="auth-notes"><span class="auth-note">⇢ Context Handoff</span><span class="auth-note">◒ Token Monitor</span><span class="auth-note">▦ Project Library</span></div></section><section class="auth-card"><span class="status-pill demo">Bản thử cục bộ đã sẵn sàng</span><h2>Đăng nhập Bambuseae</h2><p>Tài khoản thật sẽ đồng bộ dự án giữa điện thoại và máy tính sau khi cấu hình Google OAuth.</p><button class="google-button" type="button" data-action="google-login">G  Tiếp tục với Google</button><div class="divider">hoặc dùng bản thử</div><form data-form="local-login"><div class="field"><label for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" value="demo@bambuseae.local" required /></div><div class="field"><label for="login-password">Mật khẩu</label><input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Chỉ dùng cho bản thử" required /></div><button class="button button-primary button-wide" type="submit">Vào không gian làm việc</button></form><p class="auth-footnote">Bản thử lưu dữ liệu trên thiết bị hiện tại. Không nhập mật khẩu Gmail vào đây. Khi bật Google OAuth, Bambuseae sẽ chuyển bạn sang luồng đăng nhập chính thức của Google.</p></section></div>`;
 }
 
 function render() {
+  applyTheme();
   app.innerHTML = state.authenticated ? renderShell() : renderAuth();
   if (state.authenticated) {
     document.body.classList.remove("sidebar-open");
@@ -513,8 +544,11 @@ function render() {
 }
 
 function toast(message, tone = "") {
+  const duplicate = [...toastRegion.querySelectorAll(".toast")].find((item) => item.dataset.message === message);
+  if (duplicate) return;
   const element = document.createElement("div");
   element.className = `toast ${tone}`;
+  element.dataset.message = message;
   element.textContent = message;
   toastRegion.appendChild(element);
   window.setTimeout(() => element.remove(), 4200);
@@ -742,6 +776,7 @@ function handleClick(event) {
   if (!target) return;
   const action = target.dataset.action;
   if (action === "view") return setActiveView(target.dataset.view);
+  if (action === "toggle-theme") return toggleTheme();
   if (action === "toggle-sidebar") return document.body.classList.toggle("sidebar-open");
   if (action === "new-chat") return createNewChat();
   if (action === "open-modal") return openModal(target.dataset.modal, target.dataset.modelId || "");

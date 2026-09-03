@@ -86,9 +86,13 @@ Bản V1 chỉ giữ key cá nhân trong bộ nhớ phiên và không lưu vào 
 
 Dữ liệu hội thoại có thể mã hóa khi lưu. Tuy nhiên AI được chọn vẫn phải nhận phần nội dung cần xử lý; vì vậy không nên quảng cáo rằng nhà cung cấp AI không thể thấy nội dung đó.
 
+## Giao diện sáng/tối và biểu tượng
+
+Giao diện mặc định vẫn là nền tối để giữ phong cách Bambuseae. Nút mặt trời/mặt trăng ở màn hình đăng nhập và thanh trên cùng cho phép đổi sang giao diện sáng; lựa chọn được lưu riêng trên thiết bị. Icon mới là bụi tre gồm 7 thân tre, dùng cho favicon, PWA và avatar AI.
+
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v3` và cache luôn các module trong `providers/`. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v4` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
 
 ## Chạy kiểm tra nhanh
 
