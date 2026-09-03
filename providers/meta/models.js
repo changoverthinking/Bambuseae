@@ -8,9 +8,10 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://www.llama.com/",
+    apiLabel: "Trang chính thức Llama ↗",
+    apiNote: "Llama là model mã nguồn mở; trang này hướng dẫn triển khai, không phải nơi cấp API key hosted.",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Meta/Llama trong Cài đặt"
   }

@@ -21,13 +21,15 @@ Với AI cá nhân, frontend gửi API key tạm thời trong header `X-Bambusea
 
 ## Hợp đồng tài khoản cần triển khai
 
-Giao diện đã có luồng đăng ký/đăng nhập email, ghi nhớ phiên, quên mật khẩu và nút liên kết Google. Backend production cần cung cấp:
+Giao diện đã có luồng đăng ký/đăng nhập email bản thử, ghi nhớ phiên, quên mật khẩu và nút liên kết Google. `server.mjs` hiện đã có skeleton Google OAuth Authorization Code:
 
 - `GET /api/session`: trả tài khoản hiện tại từ cookie phiên `HttpOnly`.
 - `POST /auth/login`: kiểm tra email/mật khẩu và tạo phiên.
 - `POST /auth/register`: tạo tài khoản, gửi email xác minh và tạo phiên sau khi hợp lệ.
 - `POST /auth/password/forgot`: gửi liên kết đặt lại mật khẩu có thời hạn.
-- `GET /auth/google/start?mode=login|register|link`: OAuth Google với PKCE/state và redirect an toàn.
+- `GET /auth/google/start?mode=login|register|link`: chuyển sang Google với state và redirect cùng frontend đã cho phép.
+- `GET /auth/google/callback`: đổi code, lấy userinfo Google, tạo cookie `HttpOnly` và chuyển về frontend.
+- `GET|POST /auth/logout`: hủy phiên và xóa cookie.
 
 Không trả API key, mật khẩu hoặc refresh token vào JavaScript phía trình duyệt. GitHub Pages chỉ giữ giao diện; database và cookie phiên phải nằm ở backend HTTPS.
 
@@ -59,6 +61,6 @@ Response tối thiểu:
 
 Backend có thể chạy trên VPS/Cloudflare Worker/serverless riêng. `server.mjs` là gateway starter không cần npm package, hỗ trợ AI dùng chung và các provider cá nhân OpenAI-compatible, Anthropic, Google Gemini, Cohere theo `.env.example`. Tạo biến môi trường, chạy `node backend/server.mjs`, rồi đặt `apiBaseUrl` trong `config.js`.
 
-Gateway starter vẫn chưa phải backend nhiều người dùng hoàn chỉnh: chưa có Google OAuth, database, session, đồng bộ dự án hoặc kho key cá nhân bền vững. Trước khi công khai, phải thêm các lớp đó, xác thực mọi request và ghi usage theo user/project. Không đưa `.env` hoặc API key lên GitHub.
+Gateway starter vẫn chưa phải backend nhiều người dùng hoàn chỉnh: phiên Google hiện lưu trong bộ nhớ tiến trình, chưa có database, đồng bộ dự án hoặc kho key cá nhân bền vững. Trước khi công khai, phải thêm database/session store, PKCE/nonce và liên kết tài khoản bền vững, xác thực mọi request và ghi usage theo user/project. Không đưa `.env` hoặc API key lên GitHub.
 
 Database production nên có các bảng `profiles`, `projects`, `threads`, `messages`, `skills`, `plugins`, `project_members`, `project_skills`, `project_plugins`, `ai_connections` và `usage_events`. API key cá nhân cần được mã hóa, kiểm tra quyền và xóa được.

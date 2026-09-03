@@ -5,6 +5,8 @@
  */
 window.BAMBUSEAE_CONFIG = {
   apiBaseUrl: "",
-  googleOAuthEnabled: false,
+  // Chỉ hoạt động khi apiBaseUrl trỏ tới backend có Google OAuth.
+  googleOAuthEnabled: true,
+  googleOAuthPath: "/auth/google/start",
   appName: "Bambuseae"
 };

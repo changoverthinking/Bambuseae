@@ -9,7 +9,7 @@ const config = Object.assign(
   window.BAMBUSEAE_CONFIG || {}
 );
 
-const STORAGE_KEY = "bambuseae-state-v1";
+const STORAGE_KEY = "bambuseae-state-v2";
 const AUTH_SESSION_KEY = "bambuseae-auth-session-v1";
 const REMEMBERED_AUTH_KEY = "bambuseae-remembered-auth-v1";
 const ACCOUNTS_KEY = "bambuseae-local-accounts-v1";
@@ -27,10 +27,11 @@ const defaultState = {
   theme: "dark",
   workspaceOpen: true,
   activeView: "chat",
-  activeProjectId: "project-aig",
-  activeThreadId: "thread-world",
+  activeProjectId: null,
+  activeThreadId: null,
   activeModelId: "bambuseae-free",
   libraryFilter: "all",
+  accountMenuOpen: false,
   autoFallback: true,
   fallbackThreshold: 10,
   lastHandoff: null,
@@ -96,109 +97,10 @@ const defaultState = {
       scope: "Dùng chung"
     }
   ],
-  projects: [
-    {
-      id: "project-aig",
-      name: "Auloria: Immortal Genesis",
-      description: "Thiết kế game 2D pixel tu tiên và hệ thống thế giới.",
-      pinned: true,
-      color: "#9fe777",
-      threadIds: ["thread-world", "thread-combat"],
-      skillIds: ["continuity", "creative-architect"],
-      pluginIds: ["context-handoff", "token-monitor", "project-library"],
-      updatedAt: "Hôm nay, 09:12"
-    },
-    {
-      id: "project-bambuseae",
-      name: "Bambuseae Core",
-      description: "Xây dựng trung tâm AI, kho Skill và cơ chế chuyển mô hình.",
-      pinned: true,
-      color: "#e4c36c",
-      threadIds: ["thread-bambuseae"],
-      skillIds: ["continuity"],
-      pluginIds: ["context-handoff", "token-monitor"],
-      updatedAt: "Hôm qua, 18:40"
-    },
-    {
-      id: "project-japanese",
-      name: "NionVN",
-      description: "Ứng dụng học tiếng Nhật offline và dữ liệu JLPT.",
-      pinned: false,
-      color: "#83c8e8",
-      threadIds: [],
-      skillIds: ["continuity"],
-      pluginIds: ["project-library"],
-      updatedAt: "28/08/2026"
-    }
-  ],
-  threads: [
-    {
-      id: "thread-world",
-      projectId: "project-aig",
-      title: "Xây dựng 12 thế giới chính",
-      pinned: true,
-      updatedAt: "09:12",
-      messages: [
-        {
-          id: "msg-1",
-          role: "assistant",
-          modelId: "bambuseae-free",
-          content: "Tôi đã nạp ngữ cảnh của dự án Auloria: Immortal Genesis. Các Skill Mạch chuyện liên tục và Kiến trúc sáng tạo đang hoạt động. Bạn có thể đổi AI bất cứ lúc nào; Bambuseae sẽ giữ lại mạch nội dung.",
-          time: "09:08",
-          source: "Mô phỏng",
-          pinned: false
-        },
-        {
-          id: "msg-2",
-          role: "user",
-          content: "Hãy tiếp tục khung 12 thế giới chính và liên kết chúng với 5 thời đại.",
-          time: "09:09",
-          pinned: false
-        },
-        {
-          id: "msg-3",
-          role: "assistant",
-          modelId: "bambuseae-free",
-          content: "Được. Tôi sẽ giữ nguyên các mốc đã chốt, sau đó tách mỗi thế giới thành bản đồ, làng, thế lực và tuyến nhiệm vụ. Nếu AI hiện tại sắp hết hạn mức, bạn có thể chuyển sang Bambuseae Swift mà không cần mở đoạn chat mới.",
-          time: "09:12",
-          source: "Mô phỏng",
-          pinned: true
-        }
-      ]
-    },
-    {
-      id: "thread-combat",
-      projectId: "project-aig",
-      title: "Hệ thống chiến đấu nguyên tố",
-      pinned: false,
-      updatedAt: "Hôm qua",
-      messages: []
-    },
-    {
-      id: "thread-bambuseae",
-      projectId: "project-bambuseae",
-      title: "Kiến trúc trung tâm AI",
-      pinned: true,
-      updatedAt: "18:40",
-      messages: [
-        {
-          id: "msg-b1",
-          role: "assistant",
-          modelId: "bambuseae-fast",
-          content: "Bambuseae dùng một lịch sử hội thoại chuẩn ở lớp ứng dụng. Mỗi AI chỉ là một adapter, vì vậy đổi nhà cung cấp không làm mất Thread ID, Skill hay Project Context.",
-          time: "18:40",
-          source: "Mô phỏng",
-          pinned: false
-        }
-      ]
-    }
-  ],
+  projects: [],
+  threads: [],
   connections: [],
-  usageLog: [
-    { id: "usage-1", modelId: "bambuseae-free", threadId: "thread-world", input: 98, output: 156, total: 254, source: "Mô phỏng", time: "09:12" },
-    { id: "usage-2", modelId: "bambuseae-free", threadId: "thread-world", input: 44, output: 104, total: 148, source: "Mô phỏng", time: "09:09" },
-    { id: "usage-3", modelId: "bambuseae-fast", threadId: "thread-bambuseae", input: 81, output: 114, total: 195, source: "Mô phỏng", time: "18:40" }
-  ]
+  usageLog: []
 };
 
 let state = loadState();
@@ -319,8 +221,63 @@ function mergeModelCatalog(savedModels) {
   ];
 }
 
+function clearUnverifiedUsage(model) {
+  const next = { ...model };
+  const trustedSources = new Set(["provider", "gateway", "session"]);
+  if (!trustedSources.has(next.usageSource)) {
+    next.used = null;
+    next.limit = null;
+  }
+  return next;
+}
+
+function cleanUsageLog(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.filter((entry) => {
+    const input = Number(entry?.input);
+    const output = Number(entry?.output);
+    const total = Number(entry?.total);
+    return ["API", "API thật", "Gateway"].includes(entry?.source) && Number.isFinite(input) && Number.isFinite(output) && Number.isFinite(total);
+  });
+}
+
+function normalizeThreads(threads, projects) {
+  if (!Array.isArray(threads)) return [];
+  const projectIds = new Set((Array.isArray(projects) ? projects : []).map((project) => project?.id));
+  return threads.filter((thread) => thread?.id).map((thread) => {
+    const projectId = projectIds.has(thread.projectId) ? thread.projectId : null;
+    return {
+      ...thread,
+      projectId,
+      memoryScope: thread.memoryScope === "project" && projectId ? "project" : "global",
+      messages: Array.isArray(thread.messages) ? thread.messages : [],
+      createdAtAt: Number(thread.createdAtAt) || 0,
+      updatedAtAt: Number(thread.updatedAtAt) || Number(thread.createdAtAt) || 0
+    };
+  });
+}
+
 function normalizeModelRuntime(models) {
-  return models.map((model) => {
+  return models.map((rawModel) => {
+    const model = clearUnverifiedUsage(rawModel);
+    if (model.webOnly) {
+      return {
+        ...model,
+        available: true,
+        remoteAvailable: false,
+        status: "Mở web chính thức",
+        note: model.note || "Dùng qua website chính thức; không cần API key"
+      };
+    }
+    if (model.local) {
+      return {
+        ...model,
+        available: true,
+        remoteAvailable: false,
+        status: "Sẵn sàng cục bộ",
+        note: model.note || "Chạy mô phỏng cục bộ; không cần API key"
+      };
+    }
     if (model.shared) {
       return {
         ...model,
@@ -360,7 +317,8 @@ function loadState() {
         authenticated: Boolean(authSnapshot),
         user: restoredUser,
         authProvider: authSnapshot?.provider || null,
-        rememberLogin: Boolean(readStorage(window.localStorage, REMEMBERED_AUTH_KEY))
+        rememberLogin: Boolean(readStorage(window.localStorage, REMEMBERED_AUTH_KEY)),
+        models: normalizeModelRuntime(structuredClone(defaultState.models))
       };
     }
     return {
@@ -374,13 +332,15 @@ function loadState() {
       models: normalizeModelRuntime(mergeModelCatalog(saved.models)),
       skills: saved.skills || structuredClone(defaultState.skills),
       plugins: saved.plugins || structuredClone(defaultState.plugins),
-      projects: saved.projects || structuredClone(defaultState.projects),
-      threads: saved.threads || structuredClone(defaultState.threads),
-      usageLog: saved.usageLog || structuredClone(defaultState.usageLog),
+      projects: Array.isArray(saved.projects) ? saved.projects : [],
+      threads: normalizeThreads(saved.threads, saved.projects),
+      usageLog: cleanUsageLog(saved.usageLog),
       connections: saved.connections || []
     };
   } catch {
-    return structuredClone(defaultState);
+    const fallbackState = structuredClone(defaultState);
+    fallbackState.models = normalizeModelRuntime(fallbackState.models);
+    return fallbackState;
   }
 }
 
@@ -442,10 +402,6 @@ function exactNumber(value) {
   return new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(Number(value) || 0)));
 }
 
-function estimateTokens(text = "") {
-  return Math.max(1, Math.ceil(String(text).trim().length / 4));
-}
-
 function nowTime() {
   return new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(new Date());
 }
@@ -455,24 +411,38 @@ function getModel(id) {
 }
 
 function getProject(id = state.activeProjectId) {
-  return state.projects.find((project) => project.id === id) || state.projects[0];
+  return state.projects.find((project) => project.id === id) || null;
 }
 
 function getThread(id = state.activeThreadId) {
-  return state.threads.find((thread) => thread.id === id) || state.threads[0];
+  return state.threads.find((thread) => thread.id === id) || null;
 }
 
 function usageStats(model) {
-  const used = Math.max(0, Number(model?.used) || 0);
-  const limit = Math.max(1, Number(model?.limit) || 1);
-  const usedPercent = Math.min(100, (used / limit) * 100);
-  const remaining = Math.max(0, limit - used);
-  const remainingPercent = Math.max(0, 100 - usedPercent);
-  return { used, limit, usedPercent, remaining, remainingPercent };
+  const parsedUsed = Number(model?.used);
+  const parsedLimit = Number(model?.limit);
+  const hasUsage = Number.isFinite(parsedUsed) && parsedUsed >= 0;
+  const hasLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+  const hasQuota = hasUsage && hasLimit;
+  const used = hasUsage ? parsedUsed : 0;
+  const limit = hasLimit ? parsedLimit : 0;
+  const usedPercent = hasQuota ? Math.min(100, (used / limit) * 100) : null;
+  const remaining = hasQuota ? Math.max(0, limit - used) : null;
+  const remainingPercent = hasQuota ? Math.max(0, 100 - usedPercent) : null;
+  return { hasUsage, hasLimit, hasQuota, used, limit, usedPercent, remaining, remainingPercent };
+}
+
+function usageStatusLabel(model) {
+  const stats = usageStats(model);
+  if (stats.hasQuota) return `quota ${exactNumber(stats.limit)} token`;
+  if (stats.hasUsage && stats.hasLimit) return `đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)} token`;
+  if (stats.hasUsage) return `đã dùng ${exactNumber(stats.used)} token · chưa có quota`;
+  if (stats.hasLimit) return `quota ${exactNumber(stats.limit)} token · chưa có usage`;
+  return "chưa có usage/quota thật";
 }
 
 function getFallbackModel(currentId) {
-  return state.models.find((model) => model.id !== currentId && model.available && usageStats(model).remaining > 0) || null;
+  return state.models.find((model) => model.id !== currentId && !model.webOnly && !model.local && (!model.shared || model.remoteAvailable === true) && model.available && usageStats(model).hasQuota && usageStats(model).remaining > 0) || null;
 }
 
 function modelOptionList() {
@@ -484,7 +454,11 @@ function modelOptionList() {
   });
   return [...groups.entries()].map(([provider, models]) => `<optgroup label="${escapeHtml(provider)}">${models.map((model) => {
     const live = model.remoteAvailable === true && Boolean(config.apiBaseUrl);
-    const status = model.shared
+    const status = model.webOnly
+      ? "web miễn phí"
+      : model.local
+      ? "cục bộ · không API"
+      : model.shared
       ? config.apiBaseUrl
         ? live ? "đã kết nối" : "đang kiểm tra"
         : "demo cục bộ"
@@ -499,6 +473,11 @@ function renderBrand() {
   return `<div class="brand"><div class="brand-mark"><img src="./icon.svg" alt="" /></div><div><div class="brand-name">Bambuseae</div><span class="brand-sub">AI workspace</span></div></div>`;
 }
 
+function accountMenuMarkup(className = "") {
+  const menuOpen = state.accountMenuOpen === true;
+  return `<div class="account-control ${className}"><button class="account-trigger" type="button" data-action="toggle-account-menu" aria-expanded="${menuOpen}" aria-haspopup="menu"><div class="avatar ${className.includes("topbar") ? "top-avatar" : ""}">${escapeHtml(state.user.initial || "K")}</div><span class="profile-copy account-trigger-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)}</span></span><span class="account-chevron" aria-hidden="true">⌄</span></button><div class="account-menu ${menuOpen ? "open" : ""}" role="menu"><div class="account-menu-head"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)}</span><small>${escapeHtml(authProviderLabel())}</small></div><button class="account-menu-item" type="button" data-action="view" data-view="settings">⚙ Cài đặt tài khoản</button><button class="account-menu-item account-menu-danger" type="button" data-action="demo-logout">↪ Đăng xuất / đổi tài khoản</button></div></div>`;
+}
+
 function modelPill(model) {
   if (!model) return "";
   return `<span class="model-chip"><span>${escapeHtml(model.name)}</span><span>· ${escapeHtml(model.tier)}</span></span>`;
@@ -506,6 +485,10 @@ function modelPill(model) {
 
 function quotaMeter(model, compact = false) {
   const stats = usageStats(model);
+  if (!stats.hasQuota) {
+    const headline = stats.hasUsage && stats.hasLimit ? `Đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)} token` : stats.hasUsage ? `Đã dùng ${exactNumber(stats.used)} token theo API` : stats.hasLimit ? `Quota ${exactNumber(stats.limit)} token theo gateway` : "Chưa có usage thật";
+    return `<div class="quota-unknown"><strong>${headline}</strong><span>${stats.hasUsage && stats.hasLimit ? "Đang chờ đủ usage/quota để tính phần trăm." : "Phần trăm chỉ xuất hiện khi gateway trả đủ usage và quota thật."}</span></div>`;
+  }
   const warning = stats.remainingPercent <= state.fallbackThreshold;
   return `
     <div class="quota-row">
@@ -534,7 +517,7 @@ function renderSidebar() {
         <div class="workspace-panel ${workspaceOpen ? "open" : "collapsed"}">
           <nav aria-label="Công cụ trong Không gian">
             <div class="nav-list">
-              ${navItem("chat", "◌", "Cuộc trò chuyện", state.threads.length)}
+              ${navItem("recent", "◴", "Gần đây", state.threads.length)}
               ${navItem("pinned", "⚑", "Đã ghim", pinnedProjects.length + pinnedThreads.length)}
               ${navItem("projects", "⌂", "Dự án", state.projects.length)}
               ${navItem("library", "▦", "Thư viện", state.skills.length + state.plugins.length)}
@@ -551,13 +534,7 @@ function renderSidebar() {
           </div>
         </div>
       </section>
-      <div class="sidebar-footer">
-        <div class="profile-mini">
-          <div class="avatar">${escapeHtml(state.user.initial || "K")}</div>
-          <div class="profile-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)}</span></div>
-          <button class="button button-icon button-quiet" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button>
-        </div>
-      </div>
+      <div class="sidebar-footer">${accountMenuMarkup("sidebar-account")}</div>
     </aside>`;
 }
 
@@ -568,12 +545,15 @@ function navItem(view, icon, label, count) {
 function renderTopbar() {
   const demo = !config.apiBaseUrl;
   const liveCount = state.models.filter((model) => model.remoteAvailable === true).length;
-  const demoCount = state.models.filter((model) => model.shared && model.available).length;
-  const statusText = demo ? `Chưa có gateway · ${demoCount} AI mô phỏng` : `Gateway · ${liveCount}/${state.models.length} AI đã xác nhận`;
+  const localCount = state.models.filter((model) => model.local && model.available).length;
+  const demoCount = state.models.filter((model) => model.shared && !model.local && model.available).length;
+  const webCount = state.models.filter((model) => model.webOnly).length;
+  const statusText = demo ? `Chưa có gateway · ${localCount} cục bộ · ${demoCount} mô phỏng · ${webCount} AI web` : `Gateway · ${liveCount}/${state.models.length} AI đã xác nhận · ${webCount} AI web`;
+  const project = getProject();
   return `
     <header class="topbar">
-      <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(getProject().name)}</span><label class="topbar-model"><span>AI</span><select class="topbar-model-select" data-action="select-model" aria-label="Chọn AI nhanh">${modelOptionList()}</select></label></div>
-      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}" title="${demo ? "GitHub Pages chỉ là giao diện tĩnh; hãy cấu hình apiBaseUrl để gọi AI thật." : "Trạng thái được đọc từ API gateway; key cá nhân vẫn chỉ giữ trong phiên."}">${statusText}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
+      <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(project?.name || "Chưa có dự án")}</span><label class="topbar-model"><span>AI</span><select class="topbar-model-select" data-action="select-model" aria-label="Chọn AI nhanh">${modelOptionList()}</select></label></div>
+      <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}" title="${demo ? "GitHub Pages chỉ là giao diện tĩnh; hãy cấu hình apiBaseUrl để gọi AI thật." : "Trạng thái được đọc từ API gateway; key cá nhân vẫn chỉ giữ trong phiên."}">${statusText}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button>${accountMenuMarkup("topbar-account")}</div>
     </header>`;
 }
 
@@ -583,6 +563,7 @@ function renderShell() {
 
 function renderView() {
   switch (state.activeView) {
+    case "recent": return renderRecentView();
     case "projects": return renderProjectsView();
     case "library": return renderLibraryView();
     case "usage": return renderUsageView();
@@ -600,22 +581,55 @@ function renderChatView() {
   const project = getProject();
   const thread = getThread();
   const model = getModel(state.activeModelId);
+  if (!thread) return renderEmptyWorkspaceChat(model, project);
   const stats = usageStats(model);
+  const tokenLabel = stats.hasQuota ? `${Math.round(stats.remainingPercent)}% token còn lại` : stats.hasUsage && stats.hasLimit ? `đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)} token` : stats.hasUsage ? `đã dùng ${exactNumber(stats.used)} token · chưa có quota` : "chưa có quota/usage thật";
   const handoff = state.lastHandoff && state.lastHandoff.threadId === thread.id ? state.lastHandoff : null;
-  const connectionLabel = model.remoteAvailable === true
-    ? "AI thật qua gateway"
-    : model.shared && !config.apiBaseUrl
-      ? "Mô phỏng cục bộ"
-      : model.shared
-        ? "Đang kiểm tra gateway"
-      : model.available
-        ? "Đã nhập key · chờ gateway"
-        : "Chưa kết nối";
+  const connectionLabel = modelConnectionLabel(model);
   return `
     <section class="chat-focus" aria-label="Không gian chat">
-      <header class="chat-focus-header"><div class="chat-focus-title"><div class="chat-context-line"><span class="eyebrow">Không gian hội thoại</span><span class="chat-context-separator">·</span><span class="chat-project-label">${escapeHtml(project.name)}</span></div><h1>${escapeHtml(thread.title)}</h1><div class="chat-meta"><span>${escapeHtml(model.name)}</span><span>· ${escapeHtml(connectionLabel)}</span><span>· ${Math.round(stats.remainingPercent)}% token còn lại</span>${handoff ? `<span>· Đã chuyển từ ${escapeHtml(handoff.fromName)}</span>` : ""}</div></div><div class="chat-focus-actions"><button class="button button-quiet" data-action="handoff">⇢ Chuyển AI</button><button class="button button-gold" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button></div></header>
-      <section class="card conversation conversation-focus" aria-label="Đoạn chat hiện tại"><div class="thread-bar"><div class="thread-title"><strong>${escapeHtml(thread.title)}</strong><span>${escapeHtml(project.name)} · ${thread.messages.length} tin nhắn</span></div><div class="thread-actions"><button class="button button-icon button-quiet" aria-label="Ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">${thread.pinned ? "⚑" : "⚐"}</button><button class="button button-icon button-quiet" aria-label="Tách đoạn chat mới" data-action="branch-thread">↗</button></div></div><div class="messages" id="messages">${thread.messages.length ? thread.messages.map(renderMessage).join("") : renderEmptyChat()}</div><div class="suggestion-row"><button class="suggestion" data-action="select-suggestion" data-text="Tóm tắt những điểm quan trọng của mạch chuyện hiện tại.">Tóm tắt mạch chuyện</button><button class="suggestion" data-action="handoff">Chuyển sang AI khác</button><button class="suggestion" data-action="open-modal" data-modal="new-skill">＋ Thêm Skill</button></div><form class="composer" data-form="composer"><textarea name="prompt" rows="1" placeholder="Viết yêu cầu tiếp theo…" aria-label="Nội dung yêu cầu"></textarea><div class="composer-tools"><select class="model-mini" data-action="select-model" aria-label="AI cho tin nhắn">${modelOptionList()}</select><button class="send-button" type="submit" aria-label="Gửi">↑</button></div></form></section>
+      <header class="chat-focus-header"><div class="chat-focus-title"><div class="chat-context-line"><span class="eyebrow">Không gian hội thoại</span><span class="chat-context-separator">·</span><span class="chat-project-label">${escapeHtml(project?.name || "Chat độc lập")}</span></div><h1>${escapeHtml(thread.title)}</h1><div class="chat-meta"><span>${escapeHtml(model.name)}</span><span>· ${escapeHtml(connectionLabel)}</span><span>· ${escapeHtml(tokenLabel)}</span>${handoff ? `<span>· Đã chuyển từ ${escapeHtml(handoff.fromName)}</span>` : ""}</div></div><div class="chat-focus-actions"><button class="button button-quiet" data-action="handoff">⇢ Chuyển AI</button><button class="button button-gold" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button></div></header>
+      <section class="card conversation conversation-focus" aria-label="Đoạn chat hiện tại"><div class="thread-bar"><div class="thread-title"><strong>${escapeHtml(thread.title)}</strong><span>${escapeHtml(project?.name || "Chat độc lập")} · ${memoryScopeLabel(thread)} · ${thread.messages.length} tin nhắn</span></div><div class="thread-actions"><button class="button button-icon button-quiet" aria-label="Ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">${thread.pinned ? "⚑" : "⚐"}</button></div></div><div class="messages" id="messages">${thread.messages.length ? thread.messages.map(renderMessage).join("") : renderEmptyChat()}</div><div class="suggestion-row"><button class="suggestion" data-action="select-suggestion" data-text="Tóm tắt những điểm quan trọng của mạch chuyện hiện tại.">Tóm tắt mạch chuyện</button><button class="suggestion" data-action="handoff">Chuyển sang AI khác</button><button class="suggestion" data-action="open-modal" data-modal="new-skill">＋ Thêm Skill</button></div><form class="composer" data-form="composer"><textarea name="prompt" rows="1" placeholder="Viết yêu cầu tiếp theo…" aria-label="Nội dung yêu cầu"></textarea><div class="composer-tools"><select class="model-mini" data-action="select-model" aria-label="AI cho tin nhắn">${modelOptionList()}</select><button class="send-button" type="submit" aria-label="Gửi">↑</button></div></form></section>
     </section>`;
+}
+
+function memoryScopeLabel(thread) {
+  return thread?.memoryScope === "project" ? "Bộ nhớ dự án" : "Bộ nhớ toàn bộ";
+}
+
+function renderRecentView() {
+  const threads = state.threads.slice().sort((a, b) => Number(b.updatedAtAt || b.createdAtAt || 0) - Number(a.updatedAtAt || a.createdAtAt || 0));
+  const content = threads.length
+    ? `<div class="recent-thread-list">${threads.map(renderRecentThreadTile).join("")}</div>`
+    : `<div class="card card-pad empty-project-state"><div class="empty-icon">◴</div><h2>Chưa có cuộc trò chuyện</h2><p>Bambuseae để trống từ đầu. Những cuộc trò chuyện bạn tạo sẽ xuất hiện tại đây.</p><button class="button button-primary" data-action="new-chat">＋ Tạo cuộc trò chuyện mới</button></div>`;
+  return `${renderHeading("Không gian", "Gần đây", "Các cuộc trò chuyện cũ được giữ riêng, không tự tạo nhánh và không ghi đè lên nhau.", `<button class="button button-primary" data-action="new-chat">＋ Cuộc trò chuyện mới</button>`)}${content}`;
+}
+
+function renderRecentThreadTile(thread) {
+  const project = getProject(thread.projectId);
+  return `<article class="card recent-thread-tile"><div class="recent-thread-main"><div class="tile-icon">◌</div><div><h3>${escapeHtml(thread.title || "Cuộc trò chuyện mới")}</h3><p>${escapeHtml(project?.name || "Chat độc lập")} · ${memoryScopeLabel(thread)} · ${thread.messages.length} tin nhắn</p></div></div><div class="recent-thread-actions"><span class="tag">${escapeHtml(thread.updatedAt || "Mới tạo")}</span><button class="button button-primary" data-action="select-thread" data-thread-id="${escapeHtml(thread.id)}">Mở chat →</button></div></article>`;
+}
+
+function modelConnectionLabel(model) {
+  if (model?.webOnly) return "Miễn phí qua web · không cần API";
+  if (model?.local) return "Chạy cục bộ · không cần API";
+  if (model?.remoteAvailable === true) return "AI thật qua gateway";
+  if (model?.shared && !config.apiBaseUrl) return "Mô phỏng cục bộ";
+  if (model?.shared) return "Đang kiểm tra gateway";
+  if (model?.available) return "Đã nhập key · chờ gateway";
+  return "Chưa kết nối";
+}
+
+function renderEmptyWorkspaceChat(model, project) {
+  const hasProject = Boolean(project);
+  const title = hasProject ? "Chưa có đoạn chat" : "Không gian đang trống";
+  const description = hasProject
+    ? "Dự án này chưa có cuộc trò chuyện. Tạo một đoạn chat mới khi bạn sẵn sàng."
+    : "Bambuseae không tự tạo dự án hoặc cuộc trò chuyện. Hãy bắt đầu theo cách của bạn.";
+  const primaryAction = hasProject
+    ? `<button class="button button-primary" data-action="new-chat">＋ Tạo đoạn chat</button>`
+    : `<button class="button button-primary" data-action="new-chat">＋ Tạo cuộc trò chuyện</button>`;
+  return `<section class="chat-focus" aria-label="Không gian chat trống"><header class="chat-focus-header"><div class="chat-focus-title"><div class="chat-context-line"><span class="eyebrow">Không gian hội thoại</span><span class="chat-context-separator">·</span><span class="chat-project-label">${escapeHtml(project?.name || "Chưa có dự án")}</span></div><h1>${title}</h1><div class="chat-meta"><span>${escapeHtml(model?.name || "Chưa chọn AI")}</span><span>· ${escapeHtml(modelConnectionLabel(model))}</span></div></div><div class="chat-focus-actions">${primaryAction}<button class="button button-gold" data-action="view" data-view="projects">Quản lý dự án</button></div></header><section class="card conversation conversation-focus empty-conversation" aria-label="Chưa có nội dung chat"><div class="empty-chat"><div><div class="empty-icon">✦</div><h2>${title}</h2><p>${description}</p><div class="empty-actions">${primaryAction}<button class="button button-quiet" data-action="view" data-view="library">Mở thư viện</button></div></div></div></section></section>`;
 }
 
 function renderMessage(message) {
@@ -632,15 +646,16 @@ function renderEmptyChat() {
 
 function renderProjectsView() {
   const totalMessages = state.threads.reduce((sum, thread) => sum + thread.messages.length, 0);
+  const projectCards = state.projects.map(renderProjectTile).join("") || `<div class="card card-pad empty-project-state"><div class="empty-icon">⌂</div><h2>Chưa có dự án</h2><p>Bambuseae để trống từ đầu. Bạn có thể tạo dự án bất cứ lúc nào.</p><button class="button button-primary" data-action="open-modal" data-modal="new-project">＋ Tạo dự án đầu tiên</button></div>`;
   return `${renderHeading("Không gian làm việc", "Dự án của bạn", "Mỗi dự án giữ riêng hội thoại, Skill, Plugin và tài liệu liên quan.", `<button class="button button-primary" data-action="open-modal" data-modal="new-project">＋ Tạo dự án</button>`)}
     <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Dự án</span><strong>${state.projects.length}</strong><small>đang quản lý</small></article><article class="card stat-card stat-gold"><span class="stat-label">Đoạn chat</span><strong>${state.threads.length}</strong><small>có thể ghim</small></article><article class="card stat-card stat-blue"><span class="stat-label">Tin nhắn</span><strong>${totalMessages}</strong><small>trong các Thread</small></article><article class="card stat-card"><span class="stat-label">Skill chung</span><strong>${state.skills.length}</strong><small>dùng cho mọi AI</small></article></div>
-    <div class="project-card-grid">${state.projects.map(renderProjectTile).join("")}</div>`;
+    <div class="project-card-grid">${projectCards}</div>`;
 }
 
 function renderProjectTile(project) {
   const threadCount = state.threads.filter((thread) => thread.projectId === project.id).length;
   const skillsCount = project.skillIds?.length || 0;
-  return `<article class="card project-tile" style="--accent:${escapeHtml(project.color || "#9fe777")}"><div class="tile-top"><div class="tile-icon">⌂</div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><div class="tile-copy"><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description)}</p></div><div class="tile-footer"><span>${threadCount} chat · ${skillsCount} Skill</span><span>${escapeHtml(project.updatedAt || "")}</span></div><div class="tile-actions"><button class="button button-primary" data-action="select-project" data-project-id="${escapeHtml(project.id)}">Mở dự án →</button><button class="button button-danger" data-action="delete-project" data-project-id="${escapeHtml(project.id)}">Xóa</button></div></article>`;
+  return `<article class="card project-tile" style="--accent:${escapeHtml(project.color || "#9fe777")}"><div class="tile-top"><div class="tile-icon">⌂</div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><div class="tile-copy"><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description)}</p></div><div class="tile-footer"><span>${threadCount} chat · ${skillsCount} Skill</span><span>${escapeHtml(project.updatedAt || "")}</span></div><div class="tile-actions"><button class="button button-primary" data-action="select-project" data-project-id="${escapeHtml(project.id)}">Mở dự án →</button><button class="button button-quiet" data-action="new-thread-in-project" data-project-id="${escapeHtml(project.id)}">＋ Thêm chat</button><button class="button button-danger" data-action="delete-project" data-project-id="${escapeHtml(project.id)}">Xóa</button></div></article>`;
 }
 
 function renderLibraryView() {
@@ -665,41 +680,57 @@ function renderPluginTile(plugin) {
 
 function renderChatTile(thread) {
   const project = getProject(thread.projectId);
-  return `<article class="card library-tile" style="--accent:#e4c36c"><div class="tile-top"><div class="tile-icon">⚑</div><button class="pin-button pinned" aria-label="Bỏ ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">⚑</button></div><div class="tile-copy"><h3>${escapeHtml(thread.title)}</h3><p>${escapeHtml(project?.name || "Dự án")}<br>${thread.messages.length} tin nhắn · cập nhật ${escapeHtml(thread.updatedAt || "")}</p></div><div class="tile-actions"><button class="button button-primary button-wide" data-action="select-thread" data-thread-id="${escapeHtml(thread.id)}">Mở đoạn chat →</button></div></article>`;
+  return `<article class="card library-tile" style="--accent:#e4c36c"><div class="tile-top"><div class="tile-icon">⚑</div><button class="pin-button pinned" aria-label="Bỏ ghim đoạn chat" data-action="toggle-thread-pin" data-thread-id="${escapeHtml(thread.id)}">⚑</button></div><div class="tile-copy"><h3>${escapeHtml(thread.title)}</h3><p>${escapeHtml(project?.name || "Chat độc lập")} · ${memoryScopeLabel(thread)}<br>${thread.messages.length} tin nhắn · cập nhật ${escapeHtml(thread.updatedAt || "")}</p></div><div class="tile-actions"><button class="button button-primary button-wide" data-action="select-thread" data-thread-id="${escapeHtml(thread.id)}">Mở đoạn chat →</button></div></article>`;
 }
 
 function renderUsageView() {
   const available = state.models.filter((model) => model.available);
-  const totalUsed = available.reduce((sum, model) => sum + usageStats(model).used, 0);
-  const totalLimit = available.reduce((sum, model) => sum + usageStats(model).limit, 0);
-  const lowest = available.slice().sort((a, b) => usageStats(a).remainingPercent - usageStats(b).remainingPercent)[0];
+  const tracked = available.filter((model) => !model.webOnly);
+  const measurable = tracked.filter((model) => usageStats(model).hasQuota);
+  const observed = tracked.filter((model) => usageStats(model).hasUsage);
+  const totalUsed = observed.reduce((sum, model) => sum + usageStats(model).used, 0);
+  const totalRemaining = measurable.reduce((sum, model) => sum + usageStats(model).remaining, 0);
+  const lowest = measurable.slice().sort((a, b) => usageStats(a).remainingPercent - usageStats(b).remainingPercent)[0];
+  const totalUsedLabel = observed.length ? formatNumber(totalUsed) : "Chưa có";
   return `${renderHeading("Theo dõi sử dụng", "Hạn mức & token", "Theo dõi từng AI, nhận biết lúc sắp hết và chuyển sang mô hình dự phòng trước khi mạch chuyện bị ngắt.", `<button class="button button-gold" data-action="open-modal" data-modal="connection">＋ Kết nối AI</button>`)}
-    <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Token đã dùng</span><strong>${formatNumber(totalUsed)}</strong><small>trên các AI đang bật</small></article><article class="card stat-card stat-blue"><span class="stat-label">Token còn lại</span><strong>${formatNumber(Math.max(0, totalLimit - totalUsed))}</strong><small>theo hạn mức hiện tại</small></article><article class="card stat-card stat-gold"><span class="stat-label">AI sắp hết nhất</span><strong>${lowest ? Math.round(usageStats(lowest).remainingPercent) : 0}%</strong><small>${lowest ? escapeHtml(lowest.name) : "Chưa có dữ liệu"}</small></article><article class="card stat-card"><span class="stat-label">Cách đo</span><strong>${config.apiBaseUrl ? "API" : "Demo"}</strong><small>${config.apiBaseUrl ? "nhật ký gateway" : "ước tính cục bộ"}</small></article></div>
-    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>Tất cả AI đều có adapter riêng; mục chưa kết nối sẽ được bật trong Cài đặt.</p></div><span class="tag">${state.models.length} AI · ${available.length} đang bật</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
-    <div class="section-head usage-detail-heading"><div><p class="section-title">Chi tiết AI đang bật</p><p>Token được cập nhật theo gateway hoặc ước tính cục bộ.</p></div></div>
-    <section class="grid-2" style="margin-bottom:1rem">${available.map((model) => `<article class="card card-pad"><div class="section-head"><div><p class="section-title">${escapeHtml(model.name)}</p><p>${escapeHtml(model.provider)} · ${escapeHtml(model.tier)}</p></div><span class="tag">${Math.round(usageStats(model).remainingPercent)}% còn</span></div>${quotaMeter(model)}<div class="metric-list" style="margin-top:.9rem"><div class="metric-line"><span>Đã dùng</span><strong>${exactNumber(usageStats(model).used)} token</strong></div><div class="metric-line"><span>Còn lại</span><strong>${exactNumber(usageStats(model).remaining)} token</strong></div><div class="metric-line"><span>Làm mới</span><strong>${escapeHtml(model.reset)}</strong></div></div></article>`).join("")}</section>
+    <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Token đã dùng</span><strong>${totalUsedLabel}</strong><small>${observed.length ? "usage thật từ API" : "chưa có AI trả usage"}</small></article><article class="card stat-card stat-blue"><span class="stat-label">Quota còn lại</span><strong>${measurable.length ? formatNumber(totalRemaining) : "Chưa có"}</strong><small>${measurable.length ? "chỉ khi gateway trả quota" : "không tự ước tính"}</small></article><article class="card stat-card stat-gold"><span class="stat-label">AI sắp hết nhất</span><strong>${lowest ? Math.round(usageStats(lowest).remainingPercent) : "—"}${lowest ? "%" : ""}</strong><small>${lowest ? escapeHtml(lowest.name) : "Chưa có quota thật"}</small></article><article class="card stat-card"><span class="stat-label">Cách đo</span><strong>${config.apiBaseUrl ? "API thật" : "Chưa kết nối"}</strong><small>${config.apiBaseUrl ? "chỉ lấy usage/quota gateway trả về" : "không tính demo"}</small></article></div>
+    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>AI web mở trang chính thức; AI API chỉ hoạt động sau khi có gateway và khóa hợp lệ.</p></div><span class="tag">${state.models.length} lựa chọn · ${available.length} sẵn sàng</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
+    <div class="section-head usage-detail-heading"><div><p class="section-title">Chi tiết AI đang bật</p><p>Chỉ hiển thị usage/quota do AI thật hoặc gateway trả về; không tính số liệu demo.</p></div></div>
+    <section class="grid-2" style="margin-bottom:1rem">${tracked.map((model) => { const stats = usageStats(model); return `<article class="card card-pad"><div class="section-head"><div><p class="section-title">${escapeHtml(model.name)}</p><p>${escapeHtml(model.provider)} · ${escapeHtml(model.tier)}</p></div><span class="tag">${stats.hasQuota ? `${Math.round(stats.remainingPercent)}% còn` : "Chưa đủ số liệu"}</span></div>${quotaMeter(model)}<div class="metric-list" style="margin-top:.9rem"><div class="metric-line"><span>Đã dùng</span><strong>${stats.hasUsage ? `${exactNumber(stats.used)} token` : "Chưa có"}</strong></div><div class="metric-line"><span>Quota</span><strong>${stats.hasLimit ? `${exactNumber(stats.limit)} token` : "Chưa có"}</strong></div><div class="metric-line"><span>Làm mới</span><strong>${escapeHtml(model.reset || "Theo gateway")}</strong></div></div></article>`; }).join("") || `<div class="card card-pad"><span class="empty-chip">Chưa có AI API/cục bộ để đo token.</span></div>`}</section>
     <section class="card card-pad"><div class="section-head"><div><p class="section-title">Nhật ký gần đây</p><p>Input và output được ghi theo từng câu trả lời.</p></div><span class="tag">${state.usageLog.length} lượt</span></div><div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>AI</th><th>Input</th><th>Output</th><th>Tổng</th><th>Nguồn</th></tr></thead><tbody>${state.usageLog.slice(0, 10).map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(getModel(entry.modelId).name)}</td><td>${exactNumber(entry.input)}</td><td>${exactNumber(entry.output)}</td><td><strong>${exactNumber(entry.total)}</strong></td><td>${escapeHtml(entry.source)}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
 function renderModelCatalogCard(model) {
   const stats = usageStats(model);
   const ready = Boolean(model.available);
+  const local = Boolean(model.local);
   const demo = model.shared && !config.apiBaseUrl;
   const live = model.remoteAvailable === true;
   const initials = String(model.provider || "AI").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  const action = model.shared
+  const action = model.webOnly
+    ? `<a class="button button-quiet" href="${escapeHtml(model.webUrl)}" target="_blank" rel="noopener noreferrer">Mở AI web ↗</a>`
+    : model.shared || local
     ? `<button class="button button-quiet" type="button" data-action="view" data-view="chat">Mở chat</button>`
     : `<button class="button button-quiet" type="button" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${ready ? "Quản lý" : "Kết nối"}</button>`;
-  const statusLabel = demo ? "Demo cục bộ" : live ? "AI thật" : model.shared ? "Đang kiểm tra" : ready ? "Đã nhập key" : "Chưa kết nối";
-  const statusClass = demo || !ready ? "demo" : "";
-  const note = demo ? "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng." : model.note || "Kết nối AI trong Cài đặt";
-  return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${statusClass}">${statusLabel}</span></div>${ready ? `${quotaMeter(model, true)}${demo ? `<p class="model-catalog-note">${escapeHtml(note)} Hạn mức hiện là số liệu mô phỏng.</p>` : ""}` : `<p class="model-catalog-note">${escapeHtml(note)}</p>`}<div class="model-catalog-footer"><span>${ready ? `${Math.round(stats.remainingPercent)}% token còn lại${demo ? " · mô phỏng" : ""}` : "Chưa có số liệu token"}</span>${action}</div></article>`;
+  const statusLabel = model.webOnly ? "Miễn phí qua web" : local ? "Không cần API" : demo ? "Demo cục bộ" : live ? "AI thật" : model.shared ? "Đang kiểm tra" : ready ? "Đã nhập key" : "Chưa kết nối";
+  const statusClass = model.webOnly || demo || !ready ? "demo" : "";
+  const note = model.webOnly ? model.note || "Mở website chính thức; Bambuseae không gửi nội dung tự động." : local ? model.note || "Chạy mô phỏng cục bộ; không gửi nội dung ra ngoài trình duyệt." : demo ? "Chưa có gateway; câu trả lời hiện chỉ là mô phỏng." : model.note || "Kết nối AI trong Cài đặt";
+  const apiLink = !local && model.apiUrl ? officialApiLink(model) : "";
+  const detail = model.webOnly ? `<p class="model-catalog-note">${escapeHtml(note)}</p>` : ready ? `${quotaMeter(model, true)}<p class="model-catalog-note">${escapeHtml(note)}${demo ? " Hạn mức hiện là số liệu mô phỏng." : ""}</p>` : `<p class="model-catalog-note">${escapeHtml(note)}</p>`;
+  const remainingLabel = model.webOnly ? "Miễn phí · hạn mức do nhà cung cấp quản lý" : local ? "Không có quota AI thật" : stats.hasQuota ? `${Math.round(stats.remainingPercent)}% token còn lại` : stats.hasUsage && stats.hasLimit ? `Đã dùng ${exactNumber(stats.used)} token · quota ${exactNumber(stats.limit)}` : stats.hasUsage ? `Đã dùng ${exactNumber(stats.used)} token · chưa có quota` : "Chưa có usage thật";
+  return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${statusClass}">${statusLabel}</span></div>${detail}<div class="model-catalog-footer"><span>${remainingLabel}</span><div class="model-catalog-actions">${apiLink}${action}</div></div></article>`;
+}
+
+function officialApiLink(model) {
+  if (!model?.apiUrl) return "";
+  return `<a class="api-link" href="${escapeHtml(model.apiUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(model.apiLabel || "Lấy API chính thức ↗")}</a>`;
 }
 
 function renderSettingsView() {
   return `${renderHeading("Thiết lập", "Cài đặt Bambuseae", "Kết nối AI, điều chỉnh cách chuyển tiếp và kiểm tra trạng thái bảo mật.", `<button class="button button-primary" data-action="open-modal" data-modal="connection">＋ Thêm kết nối</button>`)}
-    <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ được bật khi có API gateway.</p></div><span class="status-pill ${config.googleOAuthEnabled ? "" : "demo"}">${config.googleOAuthEnabled ? "Google đã cấu hình" : "Chưa cấu hình"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)} · ${escapeHtml(authProviderLabel())}</span></div><button class="button button-quiet" data-action="google-login">${state.authProvider === "google" ? "Đã liên kết Google" : "Liên kết Google"}</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất</button></section>
-      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI</p><p>${config.apiBaseUrl ? "Gateway đã khai báo; AI thật chỉ hiện sau khi gateway xác nhận." : "Chưa có gateway; key cá nhân chỉ giữ tạm trong phiên trình duyệt."}</p></div></div>${state.models.filter((model) => !model.shared).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.remoteAvailable === true ? "AI thật qua gateway" : model.available ? "Đã nhập key · chờ gateway" : "Chưa kết nối"} · hạn mức ${exactNumber(model.limit)} token</span></div><button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Kiểm tra" : "Kết nối"}</button></div>`).join("")}</section></div>
+    <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ chạy qua backend và cookie phiên bảo mật.</p></div><span class="status-pill ${config.googleOAuthEnabled && config.apiBaseUrl ? "" : "demo"}">${config.googleOAuthEnabled && config.apiBaseUrl ? "Google đã cấu hình" : "Cần cấu hình backend"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)} · ${escapeHtml(authProviderLabel())}</span></div><button class="button button-quiet" data-action="google-login">${state.authProvider === "google" ? "Đã liên kết Google" : "Liên kết Google"}</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất</button></section>
+      <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI cần API</p><p>${config.apiBaseUrl ? "Gateway đã khai báo; AI thật chỉ hiện sau khi gateway xác nhận." : "Chưa có gateway; key cá nhân chỉ giữ tạm trong phiên trình duyệt."}</p></div></div>${state.models.filter((model) => !model.shared && !model.local && !model.webOnly).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.remoteAvailable === true ? "AI thật qua gateway" : model.available ? "Đã nhập key · chờ gateway" : "Chưa kết nối"} · ${usageStatusLabel(model)}</span></div><div class="connection-actions">${officialApiLink(model)}<button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Kiểm tra" : "Kết nối"}</button></div></div>`).join("")}<div class="security-note" style="margin-top:.75rem"><strong>Không cần API:</strong> ${state.models.filter((model) => model.local).map((model) => escapeHtml(model.name)).join(", ") || "Chưa có model cục bộ"}. Các model này chạy ở chế độ offline/demo và không cần nhập khóa.</div></section>
+      <section class="card card-pad"><div class="section-head"><div><p class="section-title">AI miễn phí qua web</p><p>Mở website chính thức trong tab mới; GitHub Pages không lấy hoặc chuyển nội dung chat tự động.</p></div><span class="tag">${state.models.filter((model) => model.webOnly).length} AI</span></div><div class="web-ai-list">${state.models.filter((model) => model.webOnly).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.note || "Miễn phí qua web; hạn mức do nhà cung cấp quản lý.")}</span></div><a class="button button-quiet" href="${escapeHtml(model.webUrl)}" target="_blank" rel="noopener noreferrer">Mở web ↗</a></div>`).join("")}</div></section></div>
       <div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Chuyển AI tự động</p><p>Giữ cùng Thread khi mô hình gần hoặc đã hết hạn mức.</p></div></div><div class="setting-row"><div class="setting-copy"><strong>Tự động chuyển AI</strong><span>Chuyển sang mô hình còn token khi cần.</span></div><input type="checkbox" data-setting="autoFallback" ${state.autoFallback ? "checked" : ""} aria-label="Tự động chuyển AI" /></div><div class="setting-row"><div class="setting-copy"><strong>Ngưỡng cảnh báo</strong><span>Bắt đầu cảnh báo khi còn dưới mức này.</span></div><div class="range-wrap"><input type="range" min="1" max="50" step="1" value="${state.fallbackThreshold}" data-setting="fallbackThreshold" aria-label="Ngưỡng cảnh báo" /><strong id="threshold-value">${state.fallbackThreshold}%</strong></div></div></section><section class="card card-pad"><div class="section-head"><div><p class="section-title">Bảo mật dữ liệu</p><p>Bản GitHub không chứa bí mật.</p></div></div><div class="security-note"><strong>Đang bảo vệ:</strong> config.js không có API key, khóa cá nhân không được lưu vào localStorage, và dữ liệu bản demo chỉ nằm trong trình duyệt này.</div><div class="security-note" style="margin-top:.6rem"><strong>Khi triển khai thật:</strong> dùng backend có Google OAuth, RLS theo tài khoản, mã hóa dữ liệu và gateway có giới hạn tốc độ. AI vẫn nhận nội dung cần xử lý để tạo câu trả lời.</div><button class="button button-danger" style="margin-top:.9rem" data-action="reset-demo">Xóa dữ liệu bản demo</button></section></div></div>`;
 }
 
@@ -768,6 +799,7 @@ function toast(message, tone = "") {
 
 function setActiveView(view) {
   state.activeView = view;
+  state.accountMenuOpen = false;
   saveState();
   render();
 }
@@ -778,57 +810,70 @@ function toggleWorkspace() {
   render();
 }
 
-function ensureProjectThread(project) {
-  if (!project) return null;
-  let thread = state.threads.find((item) => item.projectId === project.id);
-  if (!thread) {
-    thread = { id: uid("thread"), projectId: project.id, title: "Đoạn chat khởi đầu", pinned: false, updatedAt: nowTime(), messages: [] };
-    state.threads.unshift(thread);
-  }
+function firstProjectThread(project) {
+  return project ? state.threads.find((item) => item.projectId === project.id) || null : null;
+}
+
+function syncProjectThreadIds(project) {
+  if (!project) return;
   project.threadIds = state.threads.filter((item) => item.projectId === project.id).map((item) => item.id);
-  return thread;
 }
 
 function selectProject(projectId) {
   const project = getProject(projectId);
   if (!project) return;
   state.activeProjectId = project.id;
-  const firstThread = ensureProjectThread(project);
-  if (firstThread) state.activeThreadId = firstThread.id;
+  const firstThread = firstProjectThread(project);
+  state.activeThreadId = firstThread?.id || null;
   state.activeView = "chat";
+  state.accountMenuOpen = false;
   saveState();
   render();
 }
 
 function selectThread(threadId) {
   const thread = getThread(threadId);
+  if (!thread) return;
   state.activeThreadId = thread.id;
   state.activeProjectId = thread.projectId;
   state.activeView = "chat";
+  state.accountMenuOpen = false;
   saveState();
   render();
 }
 
 function createNewChat() {
-  const project = getProject();
-  const thread = { id: uid("thread"), projectId: project.id, title: "Đoạn chat mới", pinned: false, updatedAt: nowTime(), messages: [] };
+  openModal("new-thread");
+}
+
+function createThread(title, projectId, memoryScope) {
+  const project = projectId ? getProject(projectId) : null;
+  const thread = {
+    id: uid("thread"),
+    projectId: project?.id || null,
+    memoryScope: memoryScope === "project" && project ? "project" : "global",
+    title: title || "Cuộc trò chuyện mới",
+    pinned: false,
+    createdAtAt: Date.now(),
+    updatedAtAt: Date.now(),
+    updatedAt: nowTime(),
+    messages: []
+  };
   state.threads.unshift(thread);
-  project.threadIds = [thread.id, ...(project.threadIds || [])];
+  syncProjectThreadIds(project);
   state.activeThreadId = thread.id;
+  state.activeProjectId = project?.id || null;
   state.activeView = "chat";
   saveState();
   render();
-  toast("Đã tạo đoạn chat mới trong dự án hiện tại.", "success");
+  toast(project ? `Đã thêm cuộc trò chuyện vào dự án “${project.name}”.` : "Đã tạo cuộc trò chuyện độc lập.", "success");
 }
 
 function createProject(name, description) {
   const project = { id: uid("project"), name, description: description || "Chưa có mô tả.", pinned: false, color: "#9fe777", threadIds: [], skillIds: ["continuity"], pluginIds: ["context-handoff", "token-monitor"], updatedAt: "Vừa tạo" };
-  const thread = { id: uid("thread"), projectId: project.id, title: "Đoạn chat khởi đầu", pinned: false, updatedAt: nowTime(), messages: [] };
-  project.threadIds.push(thread.id);
   state.projects.unshift(project);
-  state.threads.unshift(thread);
   state.activeProjectId = project.id;
-  state.activeThreadId = thread.id;
+  state.activeThreadId = null;
   state.activeView = "chat";
   saveState();
   render();
@@ -838,10 +883,6 @@ function createProject(name, description) {
 function deleteProject(projectId) {
   const project = getProject(projectId);
   if (!project) return;
-  if (state.projects.length <= 1) {
-    toast("Bambuseae cần giữ lại ít nhất một dự án.", "warn");
-    return;
-  }
   const threadIds = new Set(state.threads.filter((thread) => thread.projectId === project.id).map((thread) => thread.id));
   const wasActive = state.activeProjectId === project.id;
   if (!window.confirm(`Xóa dự án “${project.name}” và ${threadIds.size} đoạn chat bên trong? Không thể hoàn tác.`)) return;
@@ -851,14 +892,13 @@ function deleteProject(projectId) {
   if (state.lastHandoff && threadIds.has(state.lastHandoff.threadId)) state.lastHandoff = null;
   if (wasActive || !state.projects.some((item) => item.id === state.activeProjectId)) {
     const nextProject = state.projects[0];
-    const nextThread = ensureProjectThread(nextProject);
-    state.activeProjectId = nextProject.id;
-    state.activeThreadId = nextThread.id;
+    const nextThread = firstProjectThread(nextProject) || state.threads[0] || null;
+    state.activeProjectId = nextThread?.projectId || nextProject?.id || null;
+    state.activeThreadId = nextThread?.id || null;
     if (state.activeView !== "projects" && state.activeView !== "pinned") state.activeView = "chat";
   } else if (!state.threads.some((thread) => thread.id === state.activeThreadId)) {
     const activeProject = getProject();
-    const nextThread = ensureProjectThread(activeProject);
-    state.activeThreadId = nextThread.id;
+    state.activeThreadId = firstProjectThread(activeProject)?.id || null;
   }
   saveState();
   render();
@@ -891,6 +931,7 @@ function handoffToFallback() {
 
 function toggleProjectPin(projectId) {
   const project = getProject(projectId);
+  if (!project) return;
   project.pinned = !project.pinned;
   saveState();
   render();
@@ -899,6 +940,7 @@ function toggleProjectPin(projectId) {
 
 function toggleThreadPin(threadId) {
   const thread = getThread(threadId);
+  if (!thread) return;
   thread.pinned = !thread.pinned;
   saveState();
   render();
@@ -907,6 +949,7 @@ function toggleThreadPin(threadId) {
 
 function toggleMessagePin(messageId) {
   const thread = getThread();
+  if (!thread) return;
   const message = thread.messages.find((item) => item.id === messageId);
   if (!message) return;
   message.pinned = !message.pinned;
@@ -915,37 +958,19 @@ function toggleMessagePin(messageId) {
   toast(message.pinned ? "Đã ghim tin nhắn." : "Đã bỏ ghim tin nhắn.", "success");
 }
 
-function branchThread() {
-  const source = getThread();
-  const project = getProject(source.projectId);
-  const branch = { id: uid("thread"), projectId: source.projectId, title: `Nhánh: ${source.title}`, pinned: false, updatedAt: nowTime(), messages: source.messages.map((message) => ({ ...message, id: uid("msg") })) };
-  state.threads.unshift(branch);
-  project.threadIds = [branch.id, ...(project.threadIds || []).filter((id) => id !== branch.id)];
-  state.activeThreadId = branch.id;
-  state.activeView = "chat";
-  saveState();
-  render();
-  toast("Đã tách thành một đoạn chat mới nhưng vẫn giữ ngữ cảnh.", "success");
-}
-
-function generateDemoReply(prompt, model) {
-  const project = getProject();
-  const skills = state.skills.filter((skill) => project.skillIds?.includes(skill.id) && skill.enabled).map((skill) => skill.name).join(", ");
-  const fallbackNote = state.lastHandoff?.threadId === state.activeThreadId ? `\n\nTôi đang tiếp tục cùng Thread sau khi chuyển từ ${state.lastHandoff.fromName}; không cần nhắc lại nội dung cũ.` : "";
-  return `Đã nhận yêu cầu trong dự án “${project.name}” bằng ${model.name}.\n\nTôi đang áp dụng: ${skills || "ngữ cảnh dự án"}. Bản mô phỏng đã ghi nhận câu hỏi vào lịch sử; khi API gateway được cấu hình, nội dung này sẽ được gửi tới AI thật.${fallbackNote}`;
-}
-
 async function callConfiguredApi(model, thread) {
-  if (!config.apiBaseUrl) return null;
+  if (!config.apiBaseUrl || model.local) return null;
   const project = getProject(thread.projectId);
   const messages = thread.messages.map((message) => ({ role: message.role, content: message.content }));
-  const skillContext = state.skills.filter((skill) => project.skillIds?.includes(skill.id) && skill.enabled).map((skill) => ({ name: skill.name, instructions: skill.instructions }));
-  const pluginContext = state.plugins.filter((plugin) => project.pluginIds?.includes(plugin.id) && plugin.enabled).map((plugin) => ({ name: plugin.name, permission: plugin.permission }));
+  const memoryScope = thread.memoryScope === "project" && project ? "project" : "global";
+  const skillContext = state.skills.filter((skill) => (memoryScope === "global" || project?.skillIds?.includes(skill.id)) && skill.enabled).map((skill) => ({ name: skill.name, instructions: skill.instructions }));
+  const pluginContext = state.plugins.filter((plugin) => (memoryScope === "global" || project?.pluginIds?.includes(plugin.id)) && plugin.enabled).map((plugin) => ({ name: plugin.name, permission: plugin.permission }));
   const adapter = getProviderAdapter(model.id);
   const request = adapter.buildGatewayRequest({
     model,
     messages,
-    project: { id: project.id, name: project.name, description: project.description },
+    project: { id: project?.id || null, name: project?.name || "Chat độc lập", description: project?.description || "", memoryScope },
+    memoryScope,
     skills: skillContext,
     plugins: pluginContext
   });
@@ -969,8 +994,25 @@ async function sendMessage(form) {
   if (!prompt) return;
   let model = getModel(state.activeModelId);
   const thread = getThread();
-  const inputEstimate = estimateTokens(prompt);
-  if (usageStats(model).remaining < inputEstimate) {
+  if (!thread) {
+    toast("Hãy tạo một dự án và đoạn chat trước khi gửi.", "warn");
+    return;
+  }
+  if (model.webOnly) {
+    window.open(model.webUrl, "_blank", "noopener,noreferrer");
+    toast(`${model.name} dùng qua website chính thức. Bambuseae đã mở tab mới; muốn chuyển ngữ cảnh tự động cần API/OAuth.`, "warn");
+    return;
+  }
+  if (model.local) {
+    toast("Đây là model mô phỏng cục bộ, không phải AI thật. Hãy kết nối AI qua API gateway.", "warn");
+    return;
+  }
+  if (!config.apiBaseUrl) {
+    toast("Chưa có API gateway. Bambuseae không tạo phản hồi demo và chưa gửi nội dung đi.", "warn");
+    return;
+  }
+  const currentStats = usageStats(model);
+  if (currentStats.hasQuota && currentStats.remaining <= 0) {
     const fallback = state.autoFallback ? getFallbackModel(model.id) : null;
     if (!fallback) {
       toast("AI hiện tại không còn đủ token. Hãy chọn AI khác trước khi gửi.", "warn");
@@ -982,33 +1024,44 @@ async function sendMessage(form) {
     toast(`AI cũ đã hết hạn mức. Bambuseae chuyển sang ${model.name}.`, "warn");
   }
   thread.messages.push({ id: uid("msg"), role: "user", content: prompt, time: nowTime(), pinned: false });
-  if (thread.title === "Đoạn chat mới" || thread.title === "Đoạn chat khởi đầu") thread.title = prompt.length > 42 ? `${prompt.slice(0, 42)}…` : prompt;
+  if (["Đoạn chat mới", "Cuộc trò chuyện mới"].includes(thread.title)) thread.title = prompt.length > 42 ? `${prompt.slice(0, 42)}…` : prompt;
   thread.updatedAt = nowTime();
+  thread.updatedAtAt = Date.now();
   textarea.value = "";
   saveState();
   render();
   let result = null;
-  if (config.apiBaseUrl) {
-    try {
-      result = await callConfiguredApi(model, thread);
-      if (result) {
-        model.remoteAvailable = true;
-        model.status = "Đã kết nối qua gateway";
-        model.note = "AI thật đang chạy qua gateway đã cấu hình";
-      }
-    } catch (error) {
-      toast("Gateway chưa trả lời, đang dùng phản hồi mô phỏng để không làm gián đoạn Thread.", "warn");
+  try {
+    result = await callConfiguredApi(model, thread);
+    if (result) {
+      model.remoteAvailable = true;
+      model.status = "Đã kết nối qua gateway";
+      model.note = "AI thật đang chạy qua gateway đã cấu hình";
     }
+  } catch (error) {
+    toast("Gateway/AI thật chưa trả lời. Không dùng phản hồi demo và không ghi usage giả.", "warn");
+    return;
   }
-  const reply = result?.content || generateDemoReply(prompt, model);
-  const usage = result?.usage || {};
-  const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? inputEstimate);
-  const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? estimateTokens(reply));
-  const totalTokens = Number(usage.total_tokens ?? (inputTokens + outputTokens));
-  model.used = Math.min(model.limit, usageStats(model).used + totalTokens);
-  thread.messages.push({ id: uid("msg"), role: "assistant", modelId: model.id, content: reply, time: nowTime(), source: result?.source || "Mô phỏng", pinned: false });
-  state.usageLog.unshift({ id: uid("usage"), modelId: model.id, threadId: thread.id, input: inputTokens, output: outputTokens, total: totalTokens, source: result?.source || "Mô phỏng", time: nowTime() });
-  if (state.autoFallback && usageStats(model).remainingPercent <= state.fallbackThreshold) {
+  if (!result?.content) {
+    toast("AI không trả nội dung. Không ghi phản hồi hoặc số liệu giả.", "warn");
+    return;
+  }
+  const reply = result.content;
+  const usage = result.usage || null;
+  const inputTokens = Number(usage?.input_tokens ?? usage?.prompt_tokens);
+  const outputTokens = Number(usage?.output_tokens ?? usage?.completion_tokens);
+  const totalTokens = Number(usage?.total_tokens ?? (Number.isFinite(inputTokens) && Number.isFinite(outputTokens) ? inputTokens + outputTokens : NaN));
+  const hasExactUsage = Number.isFinite(inputTokens) && Number.isFinite(outputTokens) && Number.isFinite(totalTokens) && totalTokens >= 0;
+  const source = result.source || "API thật";
+  thread.messages.push({ id: uid("msg"), role: "assistant", modelId: model.id, content: reply, time: nowTime(), source, pinned: false });
+  if (hasExactUsage) {
+    model.used = usageStats(model).used + totalTokens;
+    model.usageSource = "provider";
+    state.usageLog.unshift({ id: uid("usage"), modelId: model.id, threadId: thread.id, input: inputTokens, output: outputTokens, total: totalTokens, source, time: nowTime() });
+  } else {
+    toast("AI đã trả lời nhưng không gửi trường usage. Bambuseae giữ nguyên trạng thái quota để tránh tính sai.", "warn");
+  }
+  if (state.autoFallback && hasExactUsage && usageStats(model).hasQuota && usageStats(model).remainingPercent <= state.fallbackThreshold) {
     const fallback = getFallbackModel(model.id);
     if (fallback) {
       state.lastHandoff = { fromName: model.name, toName: fallback.name, reason: "Còn dưới ngưỡng cảnh báo", threadId: thread.id, time: nowTime() };
@@ -1021,18 +1074,23 @@ async function sendMessage(form) {
 
 function openModal(kind, modelId = "") {
   const targetModel = modelId ? getModel(modelId) : state.models.find((model) => !model.shared && !model.available) || state.models.find((model) => !model.shared);
-  if (kind === "new-project") {
-    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Tạo dự án mới</h2><p>Dự án sẽ có một đoạn chat khởi đầu.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-project"><div class="field"><label for="project-name">Tên dự án</label><input id="project-name" name="name" placeholder="Ví dụ: Dự án truyện mới" required /></div><div class="field"><label for="project-description">Mô tả</label><textarea id="project-description" name="description" placeholder="Mục tiêu chính của dự án"></textarea></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Tạo dự án</button></div></form></div>`;
+  if (kind === "new-thread") {
+    const currentProjectId = getProject()?.id || "";
+    const projectOptions = [`<option value="">Chat độc lập</option>`, ...state.projects.map((project) => `<option value="${escapeHtml(project.id)}" ${project.id === currentProjectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`)].join("");
+    const defaultScope = currentProjectId ? "project" : "global";
+    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Tạo cuộc trò chuyện mới</h2><p>Mỗi cuộc trò chuyện là một mạch riêng, không tự tạo nhánh và không ghi đè chat cũ.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-thread"><div class="field"><label for="thread-title">Tên cuộc trò chuyện</label><input id="thread-title" name="title" placeholder="Ví dụ: Ý tưởng mới" /></div><div class="field"><label for="thread-project">Nơi lưu</label><select id="thread-project" name="projectId">${projectOptions}</select></div><div class="field"><label for="thread-memory-scope">Phạm vi bộ nhớ</label><select id="thread-memory-scope" name="memoryScope"><option value="project" ${defaultScope === "project" ? "selected" : ""}>Chỉ dùng trong dự án</option><option value="global" ${defaultScope === "global" ? "selected" : ""}>Dùng trong toàn bộ Bambuseae</option></select><small class="field-help">Bộ nhớ dự án không lấy dữ liệu từ dự án khác. Bộ nhớ toàn bộ dùng các Skill/Plugin chung và dữ liệu bạn chủ động cung cấp.</small></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Tạo cuộc trò chuyện</button></div></form></div>`;
+  } else if (kind === "new-project") {
+    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Tạo dự án mới</h2><p>Dự án được tạo trống; bạn tự thêm đoạn chat khi sẵn sàng.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-project"><div class="field"><label for="project-name">Tên dự án</label><input id="project-name" name="name" placeholder="Ví dụ: Dự án truyện mới" required /></div><div class="field"><label for="project-description">Mô tả</label><textarea id="project-description" name="description" placeholder="Mục tiêu chính của dự án"></textarea></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Tạo dự án</button></div></form></div>`;
   } else if (kind === "new-skill") {
     modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Thêm Skill dùng chung</h2><p>Skill sẽ có thể gắn vào mọi dự án và AI.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-skill"><div class="field"><label for="skill-name">Tên Skill</label><input id="skill-name" name="name" placeholder="Ví dụ: Biên tập viên tiếng Nhật" required /></div><div class="field"><label for="skill-description">Mô tả</label><input id="skill-description" name="description" placeholder="Skill này giúp AI làm gì?" required /></div><div class="field"><label for="skill-instructions">Hướng dẫn cho AI</label><textarea id="skill-instructions" name="instructions" placeholder="Quy tắc, phong cách, định dạng kết quả…" required></textarea></div><div class="field"><label for="skill-tags">Thẻ, cách nhau bằng dấu phẩy</label><input id="skill-tags" name="tags" placeholder="viết, dịch, chuyên môn" /></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Thêm Skill</button></div></form></div>`;
   } else if (kind === "new-plugin") {
     modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>Thêm Plugin</h2><p>Plugin cần mô tả quyền trước khi dùng.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="new-plugin"><div class="field"><label for="plugin-name">Tên Plugin</label><input id="plugin-name" name="name" placeholder="Ví dụ: Đọc thư mục tài liệu" required /></div><div class="field"><label for="plugin-description">Mô tả</label><input id="plugin-description" name="description" placeholder="Plugin thực hiện việc gì?" required /></div><div class="field"><label for="plugin-permission">Quyền truy cập</label><select id="plugin-permission" name="permission"><option>Chỉ đọc</option><option>Đọc và ghi</option><option>Gọi Internet</option><option>Cần xác nhận mỗi lần</option></select></div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Thêm Plugin</button></div></form></div>`;
   } else {
-    const limit = targetModel?.limit || 250000;
+    const apiModels = state.models.filter((model) => !model.shared && !model.local && !model.webOnly);
     const gatewayNote = config.apiBaseUrl
-      ? "Gateway đã được khai báo; sau khi lưu, gateway cần trả model này ở /api/models để xác nhận AI thật."
+      ? "Gateway đã được khai báo; chỉ usage/quota do nhà cung cấp hoặc gateway trả về mới được hiển thị là số liệu thật."
       : "Chưa có gateway. GitHub Pages không thể gọi AI thật trực tiếp; lúc này key chỉ được giữ tạm trong phiên và không nên dùng trên thiết bị lạ.";
-    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId">${state.models.filter((model) => !model.shared).map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="field"><label for="connection-limit">Hạn mức token bạn muốn theo dõi</label><input id="connection-limit" name="limit" type="number" min="1" value="${limit}" required /></div><div class="security-note"><strong>Trạng thái:</strong> ${gatewayNote}</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
+    modal.innerHTML = `<div class="modal-inner"><div class="modal-head"><div><h2>${targetModel?.available ? "Cập nhật kết nối" : "Kết nối AI cá nhân"}</h2><p>API key chỉ nằm trong bộ nhớ phiên, không được lưu vào GitHub.</p></div><button class="button button-icon button-quiet" data-action="close-modal" aria-label="Đóng">×</button></div><form data-form="connection"><div class="field"><label for="connection-model">AI</label><select id="connection-model" name="modelId" data-action="select-connection-model">${apiModels.map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === targetModel?.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><div class="connection-guide" id="connection-guide">${officialApiLink(targetModel) || ""}<span>${escapeHtml(targetModel?.apiNote || "Mở trang chính thức để tạo API key.")}</span></div><div class="field"><label for="connection-key">API key</label><input id="connection-key" name="key" type="password" autocomplete="off" placeholder="Dán key tại đây; không đưa vào mã nguồn" required /></div><div class="security-note"><strong>Hạn mức:</strong> Không tự nhập số giả. Bambuseae chỉ hiển thị phần trăm khi gateway trả quota thật. ${gatewayNote}</div><div class="form-actions"><button class="button button-quiet" type="button" data-action="close-modal">Hủy</button><button class="button button-primary" type="submit">Lưu kết nối phiên này</button></div></form></div>`;
   }
   modal.showModal();
 }
@@ -1054,13 +1112,24 @@ function enterGuestMode() {
 }
 
 function startGoogleAuth() {
-  if (config.googleOAuthEnabled && config.apiBaseUrl) {
+  if (config.apiBaseUrl && config.googleOAuthEnabled !== false) {
     const mode = state.authenticated ? "link" : authMode === "register" ? "register" : "login";
-    const redirect = encodeURIComponent(window.location.href);
-    window.location.href = `${config.apiBaseUrl.replace(/\/$/, "")}/auth/google/start?mode=${mode}&redirect=${redirect}`;
+    const redirect = encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
+    const authPath = config.googleOAuthPath || "/auth/google/start";
+    window.location.href = `${config.apiBaseUrl.replace(/\/$/, "")}${authPath}?mode=${mode}&redirect=${redirect}`;
     return;
   }
-  toast("Google OAuth chưa được cấu hình. Hãy dùng email bản thử hoặc cấu hình backend trong config.js.", "warn");
+  toast(config.apiBaseUrl ? "Google OAuth đang bị tắt trong config.js." : "Chưa có API gateway cho Google OAuth. Hãy cấu hình apiBaseUrl và backend OAuth trước.", "warn");
+}
+
+function consumeOAuthResult() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("oauth");
+  if (!result) return;
+  const nextUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  window.history.replaceState({}, document.title, nextUrl);
+  if (result === "success") toast("Google đã xác thực/liên kết. Đang đồng bộ phiên tài khoản…", "success");
+  else toast(`Google OAuth chưa hoàn tất: ${params.get("reason") || "hãy thử lại"}.`, "warn");
 }
 
 async function hydrateRemoteModels() {
@@ -1073,6 +1142,7 @@ async function hydrateRemoteModels() {
     const remoteById = new Map(payload.models.filter((model) => model?.id).map((model) => [model.id, model]));
     let changed = false;
     state.models = state.models.map((model) => {
+      if (model.local) return model;
       const remote = remoteById.get(model.id);
       if (!remote) {
         if (model.shared && model.available) {
@@ -1086,8 +1156,14 @@ async function hydrateRemoteModels() {
         next.remoteAvailable = remote.available;
         next.available = remote.available;
       }
-      if (Number.isFinite(Number(remote.used))) next.used = Number(remote.used);
-      if (Number.isFinite(Number(remote.limit))) next.limit = Number(remote.limit);
+      if (Number.isFinite(Number(remote.used))) {
+        next.used = Number(remote.used);
+        next.usageSource = "gateway";
+      }
+      if (Number.isFinite(Number(remote.limit))) {
+        next.limit = Number(remote.limit);
+        next.usageSource = "gateway";
+      }
       if (remote.reset) next.reset = String(remote.reset);
       if (remote.status) next.status = String(remote.status);
       if (remote.note) next.note = String(remote.note);
@@ -1112,7 +1188,7 @@ async function hydrateRemoteModels() {
 }
 
 async function hydrateRemoteSession() {
-  if (!config.apiBaseUrl || state.authenticated) return;
+  if (!config.apiBaseUrl) return;
   try {
     const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/api/session`, { credentials: "include" });
     if (!response.ok) return;
@@ -1131,6 +1207,11 @@ function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+  if (action === "toggle-account-menu") {
+    state.accountMenuOpen = !state.accountMenuOpen;
+    render();
+    return;
+  }
   if (action === "view") return setActiveView(target.dataset.view);
   if (action === "toggle-theme") return toggleTheme();
   if (action === "toggle-workspace") return toggleWorkspace();
@@ -1138,6 +1219,13 @@ function handleClick(event) {
   if (action === "demo-guest") return enterGuestMode();
   if (action === "toggle-sidebar") return document.body.classList.toggle("sidebar-open");
   if (action === "new-chat") return createNewChat();
+  if (action === "new-thread-in-project") {
+    const project = getProject(target.dataset.projectId);
+    if (!project) return;
+    state.activeProjectId = project.id;
+    openModal("new-thread");
+    return;
+  }
   if (action === "open-modal") return openModal(target.dataset.modal, target.dataset.modelId || "");
   if (action === "close-modal") return closeModal();
   if (action === "select-project") return selectProject(target.dataset.projectId);
@@ -1147,7 +1235,6 @@ function handleClick(event) {
   if (action === "toggle-thread-pin") return toggleThreadPin(target.dataset.threadId);
   if (action === "toggle-message-pin") return toggleMessagePin(target.dataset.messageId);
   if (action === "handoff") return handoffToFallback();
-  if (action === "branch-thread") return branchThread();
   if (action === "set-library-filter") { state.libraryFilter = target.dataset.filter; saveState(); return render(); }
   if (action === "select-suggestion") { const textarea = document.querySelector("textarea[name=prompt]"); if (textarea) { textarea.value = target.dataset.text; textarea.focus(); } return; }
   if (action === "toggle-skill") { const skill = state.skills.find((item) => item.id === target.dataset.skillId); if (skill) { skill.enabled = !skill.enabled; saveState(); render(); } return; }
@@ -1157,8 +1244,12 @@ function handleClick(event) {
     return;
   }
   if (action === "demo-logout") {
+    if (config.apiBaseUrl) {
+      void fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/auth/logout`, { credentials: "include" }).catch(() => {});
+    }
     clearAuthSession();
     state.user = structuredClone(defaultState.user);
+    state.accountMenuOpen = false;
     authMode = "login";
     saveState();
     render();
@@ -1178,6 +1269,14 @@ function handleClick(event) {
 function handleChange(event) {
   const target = event.target;
   if (target.dataset.action === "select-model") return switchModel(target.value);
+  if (target.dataset.action === "select-connection-model") {
+    const model = getModel(target.value);
+    const guide = document.querySelector("#connection-guide");
+    if (guide) guide.innerHTML = `${officialApiLink(model)}<span>${escapeHtml(model?.apiNote || "Mở trang chính thức để tạo API key.")}</span>`;
+    const limit = document.querySelector("#connection-limit");
+    if (limit && model) limit.value = model.limit;
+    return;
+  }
   if (target.dataset.action === "select-project") return selectProject(target.value);
   if (target.dataset.setting === "autoFallback") { state.autoFallback = target.checked; saveState(); render(); return; }
   if (target.dataset.setting === "fallbackThreshold") { state.fallbackThreshold = Number(target.value); saveState(); const output = document.querySelector("#threshold-value"); if (output) output.textContent = `${target.value}%`; return; }
@@ -1296,12 +1395,16 @@ async function handleSubmit(event) {
     return;
   }
   if (type === "composer") return sendMessage(form);
+  if (type === "new-thread") {
+    closeModal();
+    return createThread(String(data.get("title") || "Cuộc trò chuyện mới").trim(), String(data.get("projectId") || ""), String(data.get("memoryScope") || "global"));
+  }
   if (type === "new-project") { closeModal(); return createProject(String(data.get("name") || "Dự án mới").trim(), String(data.get("description") || "").trim()); }
   if (type === "new-skill") {
     const skill = { id: uid("skill"), name: String(data.get("name") || "Skill mới").trim(), description: String(data.get("description") || "").trim(), instructions: String(data.get("instructions") || "").trim(), tags: String(data.get("tags") || "").split(",").map((tag) => tag.trim()).filter(Boolean), enabled: true, icon: "✦", scope: "Cá nhân" };
     state.skills.unshift(skill);
     const project = getProject();
-    project.skillIds = [...new Set([...(project.skillIds || []), skill.id])];
+    if (project) project.skillIds = [...new Set([...(project.skillIds || []), skill.id])];
     closeModal(); saveState(); render(); toast(`Đã thêm Skill “${skill.name}”.`, "success");
     return;
   }
@@ -1309,7 +1412,7 @@ async function handleSubmit(event) {
     const plugin = { id: uid("plugin"), name: String(data.get("name") || "Plugin mới").trim(), description: String(data.get("description") || "").trim(), permission: String(data.get("permission") || "Chỉ đọc"), enabled: true, icon: "◇", scope: "Cá nhân" };
     state.plugins.unshift(plugin);
     const project = getProject();
-    project.pluginIds = [...new Set([...(project.pluginIds || []), plugin.id])];
+    if (project) project.pluginIds = [...new Set([...(project.pluginIds || []), plugin.id])];
     closeModal(); saveState(); render(); toast(`Đã thêm Plugin “${plugin.name}”.`, "success");
     return;
   }
@@ -1322,7 +1425,9 @@ async function handleSubmit(event) {
     model.available = gatewayConfigured;
     delete model.remoteAvailable;
     model.status = "Đã nhập key · chờ gateway";
-    model.limit = Math.max(1, Number(data.get("limit")) || model.limit);
+    model.used = null;
+    model.limit = null;
+    model.usageSource = "unavailable";
     model.note = gatewayConfigured ? "Key chỉ giữ trong phiên; gateway sẽ xác nhận AI ở /api/models" : "Key chỉ được giữ tạm; cần cấu hình apiBaseUrl để gọi AI thật";
     const existing = state.connections.find((connection) => connection.modelId === model.id);
     if (existing) existing.updatedAt = nowTime();
@@ -1339,5 +1444,6 @@ document.addEventListener("submit", handleSubmit);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 render();
+consumeOAuthResult();
 void hydrateRemoteSession();
 void hydrateRemoteModels();

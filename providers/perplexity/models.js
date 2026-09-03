@@ -8,9 +8,8 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://www.perplexity.ai/settings/api",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Perplexity trong Cài đặt"
   }

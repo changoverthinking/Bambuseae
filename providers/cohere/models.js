@@ -8,9 +8,8 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://dashboard.cohere.com/api-keys",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Cohere trong Cài đặt"
   }

@@ -10,8 +10,6 @@ const models = [
     shared: true,
     available: true,
     status: "Đang hoạt động",
-    used: 42600,
-    limit: 100000,
     reset: "Hôm nay, 23:59",
     note: "Hạn mức dùng chung"
   }

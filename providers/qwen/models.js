@@ -8,9 +8,8 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://dashscope.console.aliyun.com/apiKey",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Qwen trong Cài đặt"
   }

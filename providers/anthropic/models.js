@@ -8,9 +8,8 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://console.anthropic.com/settings/keys",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Anthropic trong Cài đặt"
   },
@@ -22,9 +21,8 @@ const models = [
     tier: "API riêng",
     shared: false,
     available: false,
+    apiUrl: "https://console.anthropic.com/settings/keys",
     status: "Chưa kết nối",
-    used: 0,
-    limit: 250000,
     reset: "Theo hạn mức bạn đặt",
     note: "Kết nối gateway Anthropic trong Cài đặt"
   }

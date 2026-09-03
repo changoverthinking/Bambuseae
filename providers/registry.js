@@ -24,6 +24,12 @@ import perplexityModels from "./perplexity/models.js";
 import perplexityAdapter from "./perplexity/adapter.js";
 import cohereModels from "./cohere/models.js";
 import cohereAdapter from "./cohere/adapter.js";
+import localModels from "./local/models.js";
+import localAdapter from "./local/adapter.js";
+import freeWebModels from "./free-web/models.js";
+import freeWebAdapter from "./free-web/adapter.js";
+import gatewayFreeModels from "./gateway-free/models.js";
+import gatewayFreeAdapter from "./gateway-free/adapter.js";
 
 export const AI_CATALOG = [
   ...bambuseaeFreeModels,
@@ -37,7 +43,10 @@ export const AI_CATALOG = [
   ...mistralModels,
   ...qwenModels,
   ...perplexityModels,
-  ...cohereModels
+  ...cohereModels,
+  ...localModels,
+  ...freeWebModels,
+  ...gatewayFreeModels
 ];
 
 export const PROVIDER_ADAPTERS = {
@@ -57,7 +66,25 @@ export const PROVIDER_ADAPTERS = {
   "mistral": mistralAdapter,
   "qwen": qwenAdapter,
   "perplexity": perplexityAdapter,
-  "command": cohereAdapter
+  "command": cohereAdapter,
+  "bambuseae-local": localAdapter,
+  "phi-local": localAdapter,
+  "llama-local": localAdapter,
+  "chatgpt-free-web": freeWebAdapter,
+  "gemini-free-web": freeWebAdapter,
+  "claude-free-web": freeWebAdapter,
+  "copilot-free-web": freeWebAdapter,
+  "grok-free-web": freeWebAdapter,
+  "deepseek-free-web": freeWebAdapter,
+  "qwen-free-web": freeWebAdapter,
+  "meta-ai-free-web": freeWebAdapter,
+  "perplexity-free-web": freeWebAdapter,
+  "le-chat-free-web": freeWebAdapter,
+  "poe-free-web": freeWebAdapter,
+  "gemini-api-free": gatewayFreeAdapter,
+  "openrouter-free": gatewayFreeAdapter,
+  "huggingface-inference-free": gatewayFreeAdapter,
+  "cohere-trial": gatewayFreeAdapter
 };
 
 export function cloneModelCatalog() {

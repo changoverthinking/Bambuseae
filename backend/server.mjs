@@ -8,6 +8,7 @@
  * public for multiple users.
  */
 import http from "node:http";
+import { randomBytes } from "node:crypto";
 
 const port = Number(process.env.PORT || 8787);
 const allowedOrigin = process.env.BAMBUSEAE_ALLOWED_ORIGIN || "http://localhost:4173";
@@ -16,6 +17,14 @@ const sharedApiKey = process.env.BAMBUSEAE_SHARED_API_KEY || "";
 const sharedModel = process.env.BAMBUSEAE_SHARED_MODEL || "your-provider-model";
 const maxBodyBytes = 1_000_000;
 const rateBuckets = new Map();
+const frontendUrl = (process.env.BAMBUSEAE_FRONTEND_URL || allowedOrigin).replace(/\/$/, "");
+const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
+const googleClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || "";
+const googleRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || "";
+const authCookieName = "bambuseae_session";
+const authSessions = new Map();
+const oauthStates = new Map();
+const cookieSecure = process.env.BAMBUSEAE_COOKIE_SECURE === "true" || !frontendUrl.startsWith("http://localhost");
 const personalProviders = {
   openai: { env: "OPENAI", baseUrl: process.env.BAMBUSEAE_OPENAI_BASE_URL || "https://api.openai.com/v1", protocol: "openai-compatible" },
   anthropic: { env: "ANTHROPIC", baseUrl: process.env.BAMBUSEAE_ANTHROPIC_BASE_URL || "https://api.anthropic.com/v1", protocol: "anthropic" },
@@ -26,7 +35,9 @@ const personalProviders = {
   mistral: { env: "MISTRAL", baseUrl: process.env.BAMBUSEAE_MISTRAL_BASE_URL || "https://api.mistral.ai/v1", protocol: "openai-compatible" },
   qwen: { env: "QWEN", baseUrl: process.env.BAMBUSEAE_QWEN_BASE_URL || "", protocol: "openai-compatible" },
   perplexity: { env: "PERPLEXITY", baseUrl: process.env.BAMBUSEAE_PERPLEXITY_BASE_URL || "https://api.perplexity.ai", protocol: "openai-compatible" },
-  cohere: { env: "COHERE", baseUrl: process.env.BAMBUSEAE_COHERE_BASE_URL || "https://api.cohere.com/v2", protocol: "cohere" }
+  cohere: { env: "COHERE", baseUrl: process.env.BAMBUSEAE_COHERE_BASE_URL || "https://api.cohere.com/v2", protocol: "cohere" },
+  openrouter: { env: "OPENROUTER", baseUrl: process.env.BAMBUSEAE_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1", protocol: "openai-compatible" },
+  huggingface: { env: "HUGGINGFACE", baseUrl: process.env.BAMBUSEAE_HUGGINGFACE_BASE_URL || "https://router.huggingface.co/v1", protocol: "openai-compatible" }
 };
 
 const headers = {
@@ -38,9 +49,66 @@ const headers = {
   "Vary": "Origin"
 };
 
-function send(response, status, payload) {
-  response.writeHead(status, headers);
+function send(response, status, payload, extraHeaders = {}) {
+  response.writeHead(status, { ...headers, ...extraHeaders });
   response.end(JSON.stringify(payload));
+}
+
+function redirect(response, location, extraHeaders = {}) {
+  response.writeHead(302, { ...extraHeaders, Location: location });
+  response.end();
+}
+
+function randomId() {
+  return randomBytes(32).toString("hex");
+}
+
+function parseCookies(request) {
+  return String(request.headers.cookie || "").split(";").reduce((cookies, part) => {
+    const index = part.indexOf("=");
+    if (index < 0) return cookies;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) cookies[key] = decodeURIComponent(value);
+    return cookies;
+  }, {});
+}
+
+function sessionCookie(value, maxAge = 60 * 60 * 24 * 30) {
+  const flags = [
+    `${authCookieName}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    `Max-Age=${maxAge}`,
+    cookieSecure ? "SameSite=None" : "SameSite=Lax"
+  ];
+  if (cookieSecure) flags.push("Secure");
+  return flags.join("; ");
+}
+
+function safeFrontendRedirect(value) {
+  try {
+    const candidate = new URL(value || frontendUrl);
+    const allowed = new URL(frontendUrl);
+    if (candidate.origin !== allowed.origin) return frontendUrl;
+    if (!candidate.pathname.startsWith(allowed.pathname)) return frontendUrl;
+    candidate.search = "";
+    candidate.hash = "";
+    return candidate.toString();
+  } catch {
+    return frontendUrl;
+  }
+}
+
+function oauthResultUrl(base, result, reason = "") {
+  const target = new URL(safeFrontendRedirect(base));
+  target.searchParams.set("oauth", result);
+  if (reason) target.searchParams.set("reason", reason.slice(0, 120));
+  return target.toString();
+}
+
+function googleIsConfigured() {
+  return Boolean(googleClientId && googleClientSecret && googleRedirectUri);
 }
 
 function clientAddress(request) {
@@ -93,12 +161,14 @@ function cleanMessages(messages) {
 
 function buildSystemPrompt(body) {
   const project = body.project || {};
+  const memoryScope = body.memoryScope === "project" && project.id ? "project" : "global";
   const skills = Array.isArray(body.skills) ? body.skills : [];
   const plugins = Array.isArray(body.plugins) ? body.plugins : [];
   const skillText = skills.map((skill) => `- ${String(skill.name || "Skill").slice(0, 120)}: ${String(skill.instructions || "").slice(0, 4_000)}`).join("\n");
   const pluginText = plugins.map((plugin) => `- ${String(plugin.name || "Plugin").slice(0, 120)} (${String(plugin.permission || "quyền chưa rõ")})`).join("\n");
   return [
     "Bạn đang trả lời trong Bambuseae. Giữ mạch hội thoại và không tự ý thay đổi quyết định đã chốt trong dự án.",
+    `Phạm vi bộ nhớ: ${memoryScope === "project" ? "chỉ dự án hiện tại; không lấy dữ liệu từ dự án khác" : "toàn bộ Bambuseae theo dữ liệu được phép"}`,
     `Dự án: ${String(project.name || "Không có tên").slice(0, 200)}`,
     `Mô tả: ${String(project.description || "").slice(0, 2_000)}`,
     skillText ? `Skill đang bật:\n${skillText}` : "",
@@ -229,10 +299,80 @@ async function chat(body, request) {
   return callOpenAICompatible(body, provider, key);
 }
 
+async function exchangeGoogleCode(code) {
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      redirect_uri: googleRedirectUri,
+      grant_type: "authorization_code"
+    })
+  });
+  const tokenPayload = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || !tokenPayload.access_token) throw new Error("GOOGLE_TOKEN_EXCHANGE_FAILED");
+  const userResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { Authorization: `Bearer ${tokenPayload.access_token}` }
+  });
+  const user = await userResponse.json().catch(() => ({}));
+  if (!userResponse.ok || !user.sub || !user.email) throw new Error("GOOGLE_USERINFO_FAILED");
+  return {
+    id: String(user.sub),
+    name: String(user.name || user.email.split("@")[0]).slice(0, 120),
+    email: String(user.email).trim().toLowerCase(),
+    picture: user.picture ? String(user.picture) : "",
+    provider: "google"
+  };
+}
+
 const server = http.createServer(async (request, response) => {
   if (request.method === "OPTIONS") return send(response, 204, {});
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
   if (url.pathname === "/health" && request.method === "GET") return send(response, 200, { ok: true, service: "bambuseae-gateway" });
+  if (url.pathname === "/auth/google/start" && request.method === "GET") {
+    if (!googleIsConfigured()) return send(response, 503, { error: "GOOGLE_OAUTH_NOT_CONFIGURED" });
+    const mode = ["login", "register", "link"].includes(url.searchParams.get("mode")) ? url.searchParams.get("mode") : "login";
+    const returnTo = safeFrontendRedirect(url.searchParams.get("redirect"));
+    const stateId = randomId();
+    oauthStates.set(stateId, { redirect: returnTo, mode, sessionId: parseCookies(request)[authCookieName] || "", createdAt: Date.now() });
+    const authorization = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authorization.search = new URLSearchParams({
+      client_id: googleClientId,
+      redirect_uri: googleRedirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      include_granted_scopes: "true",
+      state: stateId,
+      prompt: mode === "link" ? "select_account" : "select_account"
+    }).toString();
+    return redirect(response, authorization.toString());
+  }
+  if (url.pathname === "/auth/google/callback" && request.method === "GET") {
+    const record = oauthStates.get(url.searchParams.get("state") || "");
+    if (!record || Date.now() - record.createdAt > 10 * 60_000) return redirect(response, oauthResultUrl(frontendUrl, "error", "STATE_EXPIRED"));
+    oauthStates.delete(url.searchParams.get("state") || "");
+    if (url.searchParams.get("error")) return redirect(response, oauthResultUrl(record.redirect, "error", url.searchParams.get("error")));
+    try {
+      const user = await exchangeGoogleCode(url.searchParams.get("code") || "");
+      const sessionId = record.sessionId || randomId();
+      authSessions.set(sessionId, { ...user, createdAt: Date.now(), mode: record.mode });
+      return redirect(response, oauthResultUrl(record.redirect, "success"), { "Set-Cookie": sessionCookie(sessionId) });
+    } catch (error) {
+      return redirect(response, oauthResultUrl(record.redirect, "error", error?.message || "GOOGLE_OAUTH_FAILED"));
+    }
+  }
+  if (url.pathname === "/api/session" && request.method === "GET") {
+    const session = authSessions.get(parseCookies(request)[authCookieName] || "");
+    return send(response, 200, session ? { authenticated: true, user: session } : { authenticated: false, user: null });
+  }
+  if (url.pathname === "/auth/logout" && (request.method === "GET" || request.method === "POST")) {
+    const sessionId = parseCookies(request)[authCookieName] || "";
+    if (sessionId) authSessions.delete(sessionId);
+    return send(response, 200, { ok: true }, { "Set-Cookie": sessionCookie("", 0) });
+  }
   if (url.pathname === "/api/models" && request.method === "GET") {
     const available = Boolean(sharedBaseUrl && sharedApiKey);
     return send(response, 200, { models: [

@@ -1,4 +1,4 @@
-const CACHE_NAME = "bambuseae-shell-v7";
+const CACHE_NAME = "bambuseae-shell-v10";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -34,7 +34,13 @@ const APP_SHELL = [
   "./providers/perplexity/models.js",
   "./providers/perplexity/adapter.js",
   "./providers/cohere/models.js",
-  "./providers/cohere/adapter.js"
+  "./providers/cohere/adapter.js",
+  "./providers/local/models.js",
+  "./providers/local/adapter.js",
+  "./providers/free-web/models.js",
+  "./providers/free-web/adapter.js",
+  "./providers/gateway-free/models.js",
+  "./providers/gateway-free/adapter.js"
 ];
 
 self.addEventListener("install", (event) => {
