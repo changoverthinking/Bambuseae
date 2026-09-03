@@ -454,10 +454,16 @@ function getFallbackModel(currentId) {
 }
 
 function modelOptionList() {
-  return state.models.map((model) => {
+  const groups = new Map();
+  state.models.forEach((model) => {
+    const group = groups.get(model.provider) || [];
+    group.push(model);
+    groups.set(model.provider, group);
+  });
+  return [...groups.entries()].map(([provider, models]) => `<optgroup label="${escapeHtml(provider)}">${models.map((model) => {
     const status = model.available ? "sẵn sàng" : "chưa kết nối";
     return `<option value="${escapeHtml(model.id)}" ${model.id === state.activeModelId ? "selected" : ""} ${model.available ? "" : "disabled"}>${escapeHtml(model.name)} · ${status}</option>`;
-  }).join("");
+  }).join("")}</optgroup>`).join("");
 }
 
 function renderBrand() {
@@ -500,7 +506,7 @@ function renderSidebar() {
           ${navItem("pinned", "⚑", "Đã ghim", pinnedProjects.length + pinnedThreads.length)}
           ${navItem("projects", "⌂", "Dự án", state.projects.length)}
           ${navItem("library", "▦", "Thư viện", state.skills.length + state.plugins.length)}
-          ${navItem("usage", "◒", "Hạn mức AI", state.models.filter((model) => model.available).length)}
+          ${navItem("usage", "◒", "AI & hạn mức", state.models.length)}
         </div>
       </nav>
       <div class="sidebar-section">
@@ -529,7 +535,7 @@ function renderTopbar() {
   const demo = !config.apiBaseUrl;
   return `
     <header class="topbar">
-      <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(getProject().name)}</span></div>
+      <div class="topbar-left"><button class="button button-icon mobile-menu" aria-label="Mở menu" data-action="toggle-sidebar">☰</button><span class="topbar-context">Không gian riêng · ${escapeHtml(getProject().name)}</span><label class="topbar-model"><span>AI</span><select class="topbar-model-select" data-action="select-model" aria-label="Chọn AI nhanh">${modelOptionList()}</select></label></div>
       <div class="topbar-right"><span class="status-pill ${demo ? "demo" : ""}">${demo ? "Bản mô phỏng cục bộ" : "API gateway đã kết nối"}</span>${themeButtonMarkup()}<button class="button button-icon" aria-label="Mở cài đặt" data-action="view" data-view="settings">⚙</button><div class="avatar top-avatar">${escapeHtml(state.user.initial || "K")}</div></div>
     </header>`;
 }
@@ -584,7 +590,7 @@ function renderChatView() {
         <form class="composer" data-form="composer"><textarea name="prompt" rows="1" placeholder="Viết yêu cầu tiếp theo…" aria-label="Nội dung yêu cầu"></textarea><div class="composer-tools"><select class="model-mini" data-action="select-model" aria-label="AI cho tin nhắn">${modelOptionList()}</select><button class="send-button" type="submit" aria-label="Gửi">↑</button></div></form>
       </section>
       <aside class="inspector" aria-label="Thông tin dự án">
-        <section class="card project-card"><div class="project-row"><div><div class="project-name">${escapeHtml(project.name)}</div><p class="project-desc">${escapeHtml(project.description)}</p></div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><select class="project-select" data-action="select-project" aria-label="Chọn dự án">${state.projects.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === project.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></section>
+        <section class="card project-card"><div class="project-row"><div><div class="project-name">${escapeHtml(project.name)}</div><p class="project-desc">${escapeHtml(project.description)}</p></div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><select class="project-select" data-action="select-project" aria-label="Chọn dự án">${state.projects.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === project.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select><div class="project-card-actions"><button class="button button-danger button-wide" type="button" data-action="delete-project" data-project-id="${escapeHtml(project.id)}">Xóa dự án</button></div></section>
         <section class="card inspector-card"><div class="section-head"><p class="section-title">Skill đang dùng</p><button class="button button-icon button-quiet" aria-label="Mở thư viện Skill" data-action="view" data-view="library">＋</button></div><div class="chip-list">${skills.length ? skills.map((skill) => `<span class="tag skill-chip">${escapeHtml(skill.icon)} ${escapeHtml(skill.name)}</span>`).join("") : `<span class="empty-chip">Chưa gắn Skill</span>`}</div></section>
         <section class="card inspector-card"><div class="section-head"><p class="section-title">Plugin đang dùng</p><button class="button button-icon button-quiet" aria-label="Mở thư viện Plugin" data-action="view" data-view="library">＋</button></div><div class="chip-list">${plugins.length ? plugins.map((plugin) => `<span class="tag plugin-chip">${escapeHtml(plugin.icon)} ${escapeHtml(plugin.name)}</span>`).join("") : `<span class="empty-chip">Chưa gắn Plugin</span>`}</div></section>
       </aside>
@@ -613,7 +619,7 @@ function renderProjectsView() {
 function renderProjectTile(project) {
   const threadCount = state.threads.filter((thread) => thread.projectId === project.id).length;
   const skillsCount = project.skillIds?.length || 0;
-  return `<article class="card project-tile" style="--accent:${escapeHtml(project.color || "#9fe777")}"><div class="tile-top"><div class="tile-icon">⌂</div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><div class="tile-copy"><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description)}</p></div><div class="tile-footer"><span>${threadCount} chat · ${skillsCount} Skill</span><span>${escapeHtml(project.updatedAt || "")}</span></div><div class="tile-actions"><button class="button button-primary button-wide" data-action="select-project" data-project-id="${escapeHtml(project.id)}">Mở dự án →</button></div></article>`;
+  return `<article class="card project-tile" style="--accent:${escapeHtml(project.color || "#9fe777")}"><div class="tile-top"><div class="tile-icon">⌂</div><button class="pin-button ${project.pinned ? "pinned" : ""}" aria-label="Ghim dự án" data-action="toggle-project-pin" data-project-id="${escapeHtml(project.id)}">${project.pinned ? "◆" : "◇"}</button></div><div class="tile-copy"><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description)}</p></div><div class="tile-footer"><span>${threadCount} chat · ${skillsCount} Skill</span><span>${escapeHtml(project.updatedAt || "")}</span></div><div class="tile-actions"><button class="button button-primary" data-action="select-project" data-project-id="${escapeHtml(project.id)}">Mở dự án →</button><button class="button button-danger" data-action="delete-project" data-project-id="${escapeHtml(project.id)}">Xóa</button></div></article>`;
 }
 
 function renderLibraryView() {
@@ -648,8 +654,20 @@ function renderUsageView() {
   const lowest = available.slice().sort((a, b) => usageStats(a).remainingPercent - usageStats(b).remainingPercent)[0];
   return `${renderHeading("Theo dõi sử dụng", "Hạn mức & token", "Theo dõi từng AI, nhận biết lúc sắp hết và chuyển sang mô hình dự phòng trước khi mạch chuyện bị ngắt.", `<button class="button button-gold" data-action="open-modal" data-modal="connection">＋ Kết nối AI</button>`)}
     <div class="grid-4" style="margin-bottom:1rem"><article class="card stat-card stat-green"><span class="stat-label">Token đã dùng</span><strong>${formatNumber(totalUsed)}</strong><small>trên các AI đang bật</small></article><article class="card stat-card stat-blue"><span class="stat-label">Token còn lại</span><strong>${formatNumber(Math.max(0, totalLimit - totalUsed))}</strong><small>theo hạn mức hiện tại</small></article><article class="card stat-card stat-gold"><span class="stat-label">AI sắp hết nhất</span><strong>${lowest ? Math.round(usageStats(lowest).remainingPercent) : 0}%</strong><small>${lowest ? escapeHtml(lowest.name) : "Chưa có dữ liệu"}</small></article><article class="card stat-card"><span class="stat-label">Cách đo</span><strong>${config.apiBaseUrl ? "API" : "Demo"}</strong><small>${config.apiBaseUrl ? "nhật ký gateway" : "ước tính cục bộ"}</small></article></div>
+    <section class="card card-pad model-catalog-panel"><div class="section-head"><div><p class="section-title">Danh mục AI</p><p>Tất cả AI đều có adapter riêng; mục chưa kết nối sẽ được bật trong Cài đặt.</p></div><span class="tag">${state.models.length} AI · ${available.length} sẵn sàng</span></div><div class="model-catalog-grid">${state.models.map(renderModelCatalogCard).join("")}</div></section>
+    <div class="section-head usage-detail-heading"><div><p class="section-title">Chi tiết AI đang bật</p><p>Token được cập nhật theo gateway hoặc ước tính cục bộ.</p></div></div>
     <section class="grid-2" style="margin-bottom:1rem">${available.map((model) => `<article class="card card-pad"><div class="section-head"><div><p class="section-title">${escapeHtml(model.name)}</p><p>${escapeHtml(model.provider)} · ${escapeHtml(model.tier)}</p></div><span class="tag">${Math.round(usageStats(model).remainingPercent)}% còn</span></div>${quotaMeter(model)}<div class="metric-list" style="margin-top:.9rem"><div class="metric-line"><span>Đã dùng</span><strong>${exactNumber(usageStats(model).used)} token</strong></div><div class="metric-line"><span>Còn lại</span><strong>${exactNumber(usageStats(model).remaining)} token</strong></div><div class="metric-line"><span>Làm mới</span><strong>${escapeHtml(model.reset)}</strong></div></div></article>`).join("")}</section>
     <section class="card card-pad"><div class="section-head"><div><p class="section-title">Nhật ký gần đây</p><p>Input và output được ghi theo từng câu trả lời.</p></div><span class="tag">${state.usageLog.length} lượt</span></div><div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>AI</th><th>Input</th><th>Output</th><th>Tổng</th><th>Nguồn</th></tr></thead><tbody>${state.usageLog.slice(0, 10).map((entry) => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(getModel(entry.modelId).name)}</td><td>${exactNumber(entry.input)}</td><td>${exactNumber(entry.output)}</td><td><strong>${exactNumber(entry.total)}</strong></td><td>${escapeHtml(entry.source)}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function renderModelCatalogCard(model) {
+  const stats = usageStats(model);
+  const ready = Boolean(model.available);
+  const initials = String(model.provider || "AI").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const action = model.shared
+    ? `<button class="button button-quiet" type="button" data-action="view" data-view="chat">Mở chat</button>`
+    : `<button class="button button-quiet" type="button" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${ready ? "Quản lý" : "Kết nối"}</button>`;
+  return `<article class="model-catalog-card ${ready ? "ready" : ""}"><div class="model-catalog-head"><div class="provider-badge">${escapeHtml(initials)}</div><div class="model-catalog-copy"><strong>${escapeHtml(model.name)}</strong><span>${escapeHtml(model.provider)} · ${escapeHtml(model.category)}</span></div><span class="status-pill ${ready ? "" : "demo"}">${ready ? "Sẵn sàng" : "Chưa kết nối"}</span></div>${ready ? quotaMeter(model, true) : `<p class="model-catalog-note">${escapeHtml(model.note || "Kết nối AI trong Cài đặt")}</p>`}<div class="model-catalog-footer"><span>${ready ? `${Math.round(stats.remainingPercent)}% token còn lại` : "Chưa có số liệu token"}</span>${action}</div></article>`;
 }
 
 function renderSettingsView() {
@@ -728,10 +746,22 @@ function setActiveView(view) {
   render();
 }
 
+function ensureProjectThread(project) {
+  if (!project) return null;
+  let thread = state.threads.find((item) => item.projectId === project.id);
+  if (!thread) {
+    thread = { id: uid("thread"), projectId: project.id, title: "Đoạn chat khởi đầu", pinned: false, updatedAt: nowTime(), messages: [] };
+    state.threads.unshift(thread);
+  }
+  project.threadIds = state.threads.filter((item) => item.projectId === project.id).map((item) => item.id);
+  return thread;
+}
+
 function selectProject(projectId) {
   const project = getProject(projectId);
+  if (!project) return;
   state.activeProjectId = project.id;
-  const firstThread = state.threads.find((thread) => thread.projectId === project.id);
+  const firstThread = ensureProjectThread(project);
   if (firstThread) state.activeThreadId = firstThread.id;
   state.activeView = "chat";
   saveState();
@@ -771,6 +801,36 @@ function createProject(name, description) {
   saveState();
   render();
   toast(`Đã tạo dự án “${name}”.`, "success");
+}
+
+function deleteProject(projectId) {
+  const project = getProject(projectId);
+  if (!project) return;
+  if (state.projects.length <= 1) {
+    toast("Bambuseae cần giữ lại ít nhất một dự án.", "warn");
+    return;
+  }
+  const threadIds = new Set(state.threads.filter((thread) => thread.projectId === project.id).map((thread) => thread.id));
+  const wasActive = state.activeProjectId === project.id;
+  if (!window.confirm(`Xóa dự án “${project.name}” và ${threadIds.size} đoạn chat bên trong? Không thể hoàn tác.`)) return;
+  state.projects = state.projects.filter((item) => item.id !== project.id);
+  state.threads = state.threads.filter((thread) => thread.projectId !== project.id);
+  state.usageLog = state.usageLog.filter((entry) => !threadIds.has(entry.threadId));
+  if (state.lastHandoff && threadIds.has(state.lastHandoff.threadId)) state.lastHandoff = null;
+  if (wasActive || !state.projects.some((item) => item.id === state.activeProjectId)) {
+    const nextProject = state.projects[0];
+    const nextThread = ensureProjectThread(nextProject);
+    state.activeProjectId = nextProject.id;
+    state.activeThreadId = nextThread.id;
+    if (state.activeView !== "projects" && state.activeView !== "pinned") state.activeView = "chat";
+  } else if (!state.threads.some((thread) => thread.id === state.activeThreadId)) {
+    const activeProject = getProject();
+    const nextThread = ensureProjectThread(activeProject);
+    state.activeThreadId = nextThread.id;
+  }
+  saveState();
+  render();
+  toast(`Đã xóa dự án “${project.name}”.`, "success");
 }
 
 function switchModel(modelId, reason = "Người dùng chọn") {
@@ -990,6 +1050,7 @@ function handleClick(event) {
   if (action === "open-modal") return openModal(target.dataset.modal, target.dataset.modelId || "");
   if (action === "close-modal") return closeModal();
   if (action === "select-project") return selectProject(target.dataset.projectId);
+  if (action === "delete-project") return deleteProject(target.dataset.projectId);
   if (action === "select-thread") return selectThread(target.dataset.threadId);
   if (action === "toggle-project-pin") return toggleProjectPin(target.dataset.projectId);
   if (action === "toggle-thread-pin") return toggleThreadPin(target.dataset.threadId);

@@ -7,6 +7,13 @@ backend/providers/
 ├─ openai/
 ├─ anthropic/
 ├─ google/
+├─ xai/
+├─ deepseek/
+├─ meta/
+├─ mistral/
+├─ qwen/
+├─ perplexity/
+├─ cohere/
 └─ bambuseae/
 ```
 

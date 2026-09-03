@@ -1,10 +1,10 @@
-// Các model Anthropic.
+// Các model xAI/Grok. API key thật phải nằm ở backend.
 const models = [
   {
-    id: "claude-personal",
-    name: "Claude",
-    provider: "Anthropic",
-    category: "Viết & phân tích",
+    id: "grok",
+    name: "Grok",
+    provider: "xAI",
+    category: "Đa năng",
     tier: "API riêng",
     shared: false,
     available: false,
@@ -12,13 +12,13 @@ const models = [
     used: 0,
     limit: 250000,
     reset: "Theo hạn mức bạn đặt",
-    note: "Kết nối gateway Anthropic trong Cài đặt"
+    note: "Kết nối gateway xAI trong Cài đặt"
   },
   {
-    id: "claude-writing",
-    name: "Claude Writing",
-    provider: "Anthropic",
-    category: "Viết dài",
+    id: "grok-fast",
+    name: "Grok Fast",
+    provider: "xAI",
+    category: "Phản hồi nhanh",
     tier: "API riêng",
     shared: false,
     available: false,
@@ -26,7 +26,7 @@ const models = [
     used: 0,
     limit: 250000,
     reset: "Theo hạn mức bạn đặt",
-    note: "Kết nối gateway Anthropic trong Cài đặt"
+    note: "Kết nối gateway xAI trong Cài đặt"
   }
 ];
 

@@ -1,10 +1,10 @@
-// Các model Anthropic.
+// Các model DeepSeek. Trạng thái mặc định là chưa kết nối.
 const models = [
   {
-    id: "claude-personal",
-    name: "Claude",
-    provider: "Anthropic",
-    category: "Viết & phân tích",
+    id: "deepseek",
+    name: "DeepSeek",
+    provider: "DeepSeek",
+    category: "Đa năng",
     tier: "API riêng",
     shared: false,
     available: false,
@@ -12,13 +12,13 @@ const models = [
     used: 0,
     limit: 250000,
     reset: "Theo hạn mức bạn đặt",
-    note: "Kết nối gateway Anthropic trong Cài đặt"
+    note: "Kết nối gateway DeepSeek trong Cài đặt"
   },
   {
-    id: "claude-writing",
-    name: "Claude Writing",
-    provider: "Anthropic",
-    category: "Viết dài",
+    id: "deepseek-reasoner",
+    name: "DeepSeek Reasoner",
+    provider: "DeepSeek",
+    category: "Suy luận & code",
     tier: "API riêng",
     shared: false,
     available: false,
@@ -26,7 +26,7 @@ const models = [
     used: 0,
     limit: 250000,
     reset: "Theo hạn mức bạn đặt",
-    note: "Kết nối gateway Anthropic trong Cài đặt"
+    note: "Kết nối gateway DeepSeek trong Cài đặt"
   }
 ];
 

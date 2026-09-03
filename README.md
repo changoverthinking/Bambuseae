@@ -12,6 +12,8 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 - Theo dõi token đã dùng, còn lại, phần trăm và nhật ký input/output.
 - Kho Skill và Plugin dùng chung.
 - Tạo dự án, gắn Skill/Plugin và ghim dự án/đoạn chat/tin nhắn.
+- Xóa dự án có xác nhận; các Thread và nhật ký token thuộc dự án cũng được dọn cùng.
+- Danh mục 17 model thuộc 11 nhóm AI/nhà cung cấp: Bambuseae, ChatGPT/OpenAI, Claude, Gemini, Grok, DeepSeek, Llama, Mistral, Qwen, Perplexity và Cohere; mục chưa kết nối được hiển thị rõ để bật sau.
 - Lưu dữ liệu bản thử trong trình duyệt bằng `localStorage`.
 - PWA có manifest và service worker, có thể thêm vào màn hình chính iPhone.
 - Có sẵn điểm nối `POST /api/chat` để kết nối API gateway thật.
@@ -31,7 +33,14 @@ providers/
 ├─ bambuseae-fast/
 ├─ openai/
 ├─ anthropic/
-└─ google/
+├─ google/
+├─ xai/
+├─ deepseek/
+├─ meta/
+├─ mistral/
+├─ qwen/
+├─ perplexity/
+└─ cohere/
 ```
 
 Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm thư mục AI, đăng ký trong `providers/registry.js`, rồi để backend xử lý API key và định dạng gọi thật. `skills/`, `plugins/` và `core/` cũng được dành riêng để mở rộng thành các module độc lập.
@@ -92,11 +101,11 @@ Dữ liệu hội thoại có thể mã hóa khi lưu. Tuy nhiên AI được ch
 
 ## Giao diện sáng/tối và biểu tượng
 
-Giao diện mặc định vẫn là nền tối để giữ phong cách Bambuseae. Nút mặt trời/mặt trăng ở màn hình đăng nhập và thanh trên cùng cho phép đổi sang giao diện sáng; lựa chọn được lưu riêng trên thiết bị. Icon mới là bụi tre gồm 7 thân tre, dùng cho favicon, PWA và avatar AI.
+Giao diện mặc định vẫn là nền tối để giữ phong cách Bambuseae. Nút mặt trời/mặt trăng ở màn hình đăng nhập và thanh trên cùng cho phép đổi sang giao diện sáng; lựa chọn được lưu riêng trên thiết bị. Thanh trên cùng có bộ chọn AI nhanh theo nhóm nhà cung cấp, còn mục **AI & hạn mức** hiển thị toàn bộ danh mục và trạng thái kết nối. Icon mới là bụi tre gồm 7 thân tre, dùng cho favicon, PWA và avatar AI.
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v5` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v6` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, đóng rồi mở lại trang GitHub Pages; nếu cache chưa đổi, xóa PWA cũ khỏi màn hình chính và thêm lại.
 
 ## Chạy kiểm tra nhanh
 

@@ -10,21 +10,54 @@ import anthropicModels from "./anthropic/models.js";
 import anthropicAdapter from "./anthropic/adapter.js";
 import googleModels from "./google/models.js";
 import googleAdapter from "./google/adapter.js";
+import xaiModels from "./xai/models.js";
+import xaiAdapter from "./xai/adapter.js";
+import deepseekModels from "./deepseek/models.js";
+import deepseekAdapter from "./deepseek/adapter.js";
+import metaModels from "./meta/models.js";
+import metaAdapter from "./meta/adapter.js";
+import mistralModels from "./mistral/models.js";
+import mistralAdapter from "./mistral/adapter.js";
+import qwenModels from "./qwen/models.js";
+import qwenAdapter from "./qwen/adapter.js";
+import perplexityModels from "./perplexity/models.js";
+import perplexityAdapter from "./perplexity/adapter.js";
+import cohereModels from "./cohere/models.js";
+import cohereAdapter from "./cohere/adapter.js";
 
 export const AI_CATALOG = [
   ...bambuseaeFreeModels,
   ...bambuseaeFastModels,
   ...openaiModels,
   ...anthropicModels,
-  ...googleModels
+  ...googleModels,
+  ...xaiModels,
+  ...deepseekModels,
+  ...metaModels,
+  ...mistralModels,
+  ...qwenModels,
+  ...perplexityModels,
+  ...cohereModels
 ];
 
 export const PROVIDER_ADAPTERS = {
   "bambuseae-free": bambuseaeFreeAdapter,
   "bambuseae-fast": bambuseaeFastAdapter,
   "openai-personal": openaiAdapter,
+  "openai-reasoning": openaiAdapter,
   "claude-personal": anthropicAdapter,
-  "gemini-personal": googleAdapter
+  "claude-writing": anthropicAdapter,
+  "gemini-personal": googleAdapter,
+  "gemini-pro": googleAdapter,
+  "grok": xaiAdapter,
+  "grok-fast": xaiAdapter,
+  "deepseek": deepseekAdapter,
+  "deepseek-reasoner": deepseekAdapter,
+  "llama": metaAdapter,
+  "mistral": mistralAdapter,
+  "qwen": qwenAdapter,
+  "perplexity": perplexityAdapter,
+  "command": cohereAdapter
 };
 
 export function cloneModelCatalog() {
