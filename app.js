@@ -10,14 +10,20 @@ const config = Object.assign(
 );
 
 const STORAGE_KEY = "bambuseae-state-v1";
+const AUTH_SESSION_KEY = "bambuseae-auth-session-v1";
+const REMEMBERED_AUTH_KEY = "bambuseae-remembered-auth-v1";
+const ACCOUNTS_KEY = "bambuseae-local-accounts-v1";
 const sessionKeys = Object.create(null);
 const app = document.querySelector("#app");
 const modal = document.querySelector("#modal");
 const toastRegion = document.querySelector("#toast-region");
+let authMode = "login";
 
 const defaultState = {
   authenticated: false,
   user: { name: "Khách dùng thử", email: "demo@bambuseae.local", initial: "K" },
+  authProvider: null,
+  rememberLogin: false,
   theme: "dark",
   activeView: "chat",
   activeProjectId: "project-aig",
@@ -196,6 +202,111 @@ const defaultState = {
 
 let state = loadState();
 
+function readStorage(storage, key, fallback = null) {
+  try {
+    const value = storage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(storage, key, value) {
+  try {
+    storage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeStorage(storage, key) {
+  try { storage.removeItem(key); } catch { /* storage có thể bị trình duyệt chặn */ }
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function readAccounts() {
+  const accounts = readStorage(window.localStorage, ACCOUNTS_KEY, []);
+  return Array.isArray(accounts) ? accounts : [];
+}
+
+function writeAccounts(accounts) {
+  return writeStorage(window.localStorage, ACCOUNTS_KEY, accounts);
+}
+
+function findLocalAccount(email) {
+  const normalizedEmail = normalizeEmail(email);
+  return readAccounts().find((account) => normalizeEmail(account.email) === normalizedEmail) || null;
+}
+
+function readAuthSnapshot() {
+  const snapshot = readStorage(window.sessionStorage, AUTH_SESSION_KEY) || readStorage(window.localStorage, REMEMBERED_AUTH_KEY);
+  return snapshot?.email ? snapshot : null;
+}
+
+function accountProfile(account) {
+  const name = String(account?.name || "Khách dùng thử").trim() || "Khách dùng thử";
+  return {
+    name,
+    email: normalizeEmail(account?.email) || "demo@bambuseae.local",
+    initial: name.slice(0, 1).toUpperCase()
+  };
+}
+
+function makeAuthSnapshot(account) {
+  return { ...accountProfile(account), provider: account?.provider || "local", at: new Date().toISOString() };
+}
+
+function setAuthSession(account, remember) {
+  const snapshot = makeAuthSnapshot(account);
+  writeStorage(window.sessionStorage, AUTH_SESSION_KEY, snapshot);
+  if (remember) writeStorage(window.localStorage, REMEMBERED_AUTH_KEY, snapshot);
+  else removeStorage(window.localStorage, REMEMBERED_AUTH_KEY);
+  state.user = accountProfile(account);
+  state.authProvider = snapshot.provider;
+  state.rememberLogin = Boolean(remember);
+  state.authenticated = true;
+}
+
+function clearAuthSession() {
+  removeStorage(window.sessionStorage, AUTH_SESSION_KEY);
+  removeStorage(window.localStorage, REMEMBERED_AUTH_KEY);
+  state.authenticated = false;
+  state.authProvider = null;
+  state.rememberLogin = false;
+}
+
+function bytesToHex(bytes) {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function createPasswordSalt() {
+  if (!globalThis.crypto?.getRandomValues) throw new Error("SECURE_CONTEXT_REQUIRED");
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytesToHex(bytes);
+}
+
+async function hashPassword(password, salt) {
+  if (!globalThis.crypto?.subtle || !globalThis.TextEncoder) throw new Error("SECURE_CONTEXT_REQUIRED");
+  const data = new TextEncoder().encode(`${salt}:${password}`);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function createPasswordRecord(password) {
+  const salt = createPasswordSalt();
+  return { salt, passwordHash: await hashPassword(password, salt) };
+}
+
+async function verifyPassword(account, password) {
+  if (!account?.salt || !account?.passwordHash) return false;
+  return (await hashPassword(password, account.salt)) === account.passwordHash;
+}
+
 function mergeModelCatalog(savedModels) {
   const catalog = structuredClone(defaultState.models);
   if (!Array.isArray(savedModels)) return catalog;
@@ -214,10 +325,29 @@ function normalizeTheme(theme) {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved) return structuredClone(defaultState);
+    const authSnapshot = readAuthSnapshot();
+    const savedAccount = authSnapshot?.email ? findLocalAccount(authSnapshot.email) : null;
+    const restoredUser = savedAccount
+      ? accountProfile(savedAccount)
+      : authSnapshot?.email
+        ? accountProfile(authSnapshot)
+        : structuredClone(defaultState.user);
+    if (!saved) {
+      return {
+        ...structuredClone(defaultState),
+        authenticated: Boolean(authSnapshot),
+        user: restoredUser,
+        authProvider: authSnapshot?.provider || null,
+        rememberLogin: Boolean(readStorage(window.localStorage, REMEMBERED_AUTH_KEY))
+      };
+    }
     return {
       ...structuredClone(defaultState),
       ...saved,
+      authenticated: Boolean(authSnapshot),
+      user: restoredUser,
+      authProvider: authSnapshot?.provider || null,
+      rememberLogin: Boolean(readStorage(window.localStorage, REMEMBERED_AUTH_KEY)),
       theme: normalizeTheme(saved.theme),
       models: mergeModelCatalog(saved.models),
       skills: saved.skills || structuredClone(defaultState.skills),
@@ -233,7 +363,13 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const snapshot = structuredClone(state);
+  // Phiên đăng nhập được giữ riêng trong sessionStorage/localStorage marker.
+  // Không để trạng thái authenticated cũ tự mở khóa sau khi reload.
+  snapshot.authenticated = false;
+  snapshot.authProvider = null;
+  snapshot.rememberLogin = false;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
 }
 
 function applyTheme() {
@@ -518,7 +654,7 @@ function renderUsageView() {
 
 function renderSettingsView() {
   return `${renderHeading("Thiết lập", "Cài đặt Bambuseae", "Kết nối AI, điều chỉnh cách chuyển tiếp và kiểm tra trạng thái bảo mật.", `<button class="button button-primary" data-action="open-modal" data-modal="connection">＋ Thêm kết nối</button>`)}
-    <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ được bật khi có API gateway.</p></div><span class="status-pill ${config.googleOAuthEnabled ? "" : "demo"}">${config.googleOAuthEnabled ? "Google đã cấu hình" : "Chưa cấu hình"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)}</span></div><button class="button button-quiet" data-action="google-login">Liên kết Google</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất bản hiện tại</button></section>
+    <div class="settings-grid"><div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Tài khoản</p><p>Google OAuth sẽ được bật khi có API gateway.</p></div><span class="status-pill ${config.googleOAuthEnabled ? "" : "demo"}">${config.googleOAuthEnabled ? "Google đã cấu hình" : "Chưa cấu hình"}</span></div><div class="connection-row"><div class="connection-icon">G</div><div class="connection-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(state.user.email)} · ${escapeHtml(authProviderLabel())}</span></div><button class="button button-quiet" data-action="google-login">${state.authProvider === "google" ? "Đã liên kết Google" : "Liên kết Google"}</button></div><button class="button button-danger" data-action="demo-logout">Đăng xuất</button></section>
       <section class="card card-pad"><div class="section-head"><div><p class="section-title">Kết nối AI</p><p>Khóa cá nhân chỉ giữ trong phiên trình duyệt của bản V1.</p></div></div>${state.models.filter((model) => !model.shared).map((model) => `<div class="connection-row"><div class="connection-icon">${escapeHtml(model.provider.slice(0, 1))}</div><div class="connection-copy"><strong>${escapeHtml(model.name)}</strong><span>${model.available ? "Đã ghi nhận trong phiên" : "Chưa kết nối"} · hạn mức ${exactNumber(model.limit)} token</span></div><button class="button button-quiet" data-action="open-modal" data-modal="connection" data-model-id="${escapeHtml(model.id)}">${model.available ? "Cập nhật" : "Kết nối"}</button></div>`).join("")}</section></div>
       <div class="settings-stack"><section class="card card-pad"><div class="section-head"><div><p class="section-title">Chuyển AI tự động</p><p>Giữ cùng Thread khi mô hình gần hoặc đã hết hạn mức.</p></div></div><div class="setting-row"><div class="setting-copy"><strong>Tự động chuyển AI</strong><span>Chuyển sang mô hình còn token khi cần.</span></div><input type="checkbox" data-setting="autoFallback" ${state.autoFallback ? "checked" : ""} aria-label="Tự động chuyển AI" /></div><div class="setting-row"><div class="setting-copy"><strong>Ngưỡng cảnh báo</strong><span>Bắt đầu cảnh báo khi còn dưới mức này.</span></div><div class="range-wrap"><input type="range" min="1" max="50" step="1" value="${state.fallbackThreshold}" data-setting="fallbackThreshold" aria-label="Ngưỡng cảnh báo" /><strong id="threshold-value">${state.fallbackThreshold}%</strong></div></div></section><section class="card card-pad"><div class="section-head"><div><p class="section-title">Bảo mật dữ liệu</p><p>Bản GitHub không chứa bí mật.</p></div></div><div class="security-note"><strong>Đang bảo vệ:</strong> config.js không có API key, khóa cá nhân không được lưu vào localStorage, và dữ liệu bản demo chỉ nằm trong trình duyệt này.</div><div class="security-note" style="margin-top:.6rem"><strong>Khi triển khai thật:</strong> dùng backend có Google OAuth, RLS theo tài khoản, mã hóa dữ liệu và gateway có giới hạn tốc độ. AI vẫn nhận nội dung cần xử lý để tạo câu trả lời.</div><button class="button button-danger" style="margin-top:.9rem" data-action="reset-demo">Xóa dữ liệu bản demo</button></section></div></div>`;
 }
@@ -529,8 +665,40 @@ function renderPinnedView() {
   return `${renderHeading("Truy cập nhanh", "Đã ghim", "Các dự án và đoạn chat quan trọng được đặt ở một nơi.", `<button class="button button-quiet" data-action="view" data-view="chat">Về cuộc trò chuyện</button>`)}<div class="project-card-grid" style="margin-bottom:1.5rem">${projects.map(renderProjectTile).join("") || `<div class="card card-pad"><span class="empty-chip">Chưa có dự án được ghim.</span></div>`}</div><div class="library-grid">${threads.map(renderChatTile).join("") || `<div class="card card-pad"><span class="empty-chip">Chưa có đoạn chat được ghim.</span></div>`}</div>`;
 }
 
+function renderAuthTabs() {
+  return `<div class="auth-tabs" role="tablist" aria-label="Tài khoản"><button class="auth-tab ${authMode === "login" ? "active" : ""}" type="button" role="tab" aria-selected="${authMode === "login"}" data-action="auth-mode" data-mode="login">Đăng nhập</button><button class="auth-tab ${authMode === "register" ? "active" : ""}" type="button" role="tab" aria-selected="${authMode === "register"}" data-action="auth-mode" data-mode="register">Đăng ký</button></div>`;
+}
+
+function renderRememberField() {
+  return `<label class="remember-option"><input type="checkbox" name="remember" /><span><strong>Ghi nhớ đăng nhập</strong><small>Mật khẩu do trình duyệt quản lý; Bambuseae không lưu mật khẩu dạng rõ.</small></span></label>`;
+}
+
+function renderLocalLoginForm() {
+  return `<form class="auth-form" data-form="local-login"><div class="field"><label for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" required /></div><div class="field"><label for="login-password">Mật khẩu</label><input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu" required /></div><div class="auth-form-options">${renderRememberField()}<button class="link-button" type="button" data-action="auth-mode" data-mode="reset">Quên mật khẩu?</button></div><button class="button button-primary button-wide" type="submit">Đăng nhập</button></form>`;
+}
+
+function renderRegisterForm() {
+  return `<form class="auth-form" data-form="local-register"><div class="field"><label for="register-name">Tên hiển thị</label><input id="register-name" name="name" type="text" autocomplete="name" placeholder="Tên của bạn" required /></div><div class="field"><label for="register-email">Email</label><input id="register-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" required /></div><div class="field"><label for="register-password">Mật khẩu</label><input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="Ít nhất 8 ký tự" required /></div><div class="field"><label for="register-password-confirm">Nhập lại mật khẩu</label><input id="register-password-confirm" name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="Nhập lại mật khẩu" required /></div><div class="auth-form-options">${renderRememberField()}</div><button class="button button-primary button-wide" type="submit">Tạo tài khoản</button></form>`;
+}
+
+function renderPasswordResetForm() {
+  return `<form class="auth-form" data-form="password-reset"><div class="security-note"><strong>Đặt lại mật khẩu:</strong> tài khoản thật sẽ nhận liên kết xác minh qua email từ backend. Bản GitHub tĩnh không tự gửi email.</div><div class="field"><label for="reset-email">Email tài khoản</label><input id="reset-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" required /></div><button class="button button-primary button-wide" type="submit">Gửi yêu cầu đặt lại</button><button class="button button-quiet button-wide" type="button" data-action="auth-mode" data-mode="login">← Quay lại đăng nhập</button></form>`;
+}
+
+function authProviderLabel() {
+  if (state.authProvider === "google") return "Đã liên kết Google";
+  if (state.authProvider === "local") return state.rememberLogin ? "Email · đã ghi nhớ đăng nhập" : "Email · phiên hiện tại";
+  return "Bản thử cục bộ";
+}
+
 function renderAuth() {
-  return `<div class="auth-screen">${themeButtonMarkup("theme-toggle-floating")}<section class="auth-art">${renderBrand()}<p class="eyebrow">Một nơi cho mọi mạch suy nghĩ</p><h1>Đổi AI.<br><span>Không đổi ngữ cảnh.</span></h1><p>Chọn mô hình phù hợp, gắn Skill và Plugin, theo dõi token, rồi tiếp tục cùng dự án ngay cả khi AI hiện tại đã chạm giới hạn.</p><div class="auth-notes"><span class="auth-note">⇢ Context Handoff</span><span class="auth-note">◒ Token Monitor</span><span class="auth-note">▦ Project Library</span></div></section><section class="auth-card"><span class="status-pill demo">Bản thử cục bộ đã sẵn sàng</span><h2>Đăng nhập Bambuseae</h2><p>Tài khoản thật sẽ đồng bộ dự án giữa điện thoại và máy tính sau khi cấu hình Google OAuth.</p><button class="google-button" type="button" data-action="google-login">G  Tiếp tục với Google</button><div class="divider">hoặc dùng bản thử</div><form data-form="local-login"><div class="field"><label for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="email" placeholder="ban@example.com" value="demo@bambuseae.local" required /></div><div class="field"><label for="login-password">Mật khẩu</label><input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Chỉ dùng cho bản thử" required /></div><button class="button button-primary button-wide" type="submit">Vào không gian làm việc</button></form><p class="auth-footnote">Bản thử lưu dữ liệu trên thiết bị hiện tại. Không nhập mật khẩu Gmail vào đây. Khi bật Google OAuth, Bambuseae sẽ chuyển bạn sang luồng đăng nhập chính thức của Google.</p></section></div>`;
+  const isRegister = authMode === "register";
+  const isReset = authMode === "reset";
+  const title = isRegister ? "Tạo tài khoản Bambuseae" : isReset ? "Khôi phục tài khoản" : "Đăng nhập Bambuseae";
+  const description = isRegister ? "Tạo tài khoản để sẵn sàng đồng bộ dự án khi backend được cấu hình." : isReset ? "Nhập email đã đăng ký để nhận hướng dẫn khôi phục an toàn." : "Tài khoản thật sẽ đồng bộ dự án giữa điện thoại và máy tính sau khi cấu hình Google OAuth.";
+  const authForm = isRegister ? renderRegisterForm() : isReset ? renderPasswordResetForm() : renderLocalLoginForm();
+  const providerButton = isReset ? "" : `<button class="google-button" type="button" data-action="google-login">G  ${isRegister ? "Đăng ký bằng Google" : "Tiếp tục với Google"}</button><div class="divider">hoặc dùng email</div>`;
+  return `<div class="auth-screen">${themeButtonMarkup("theme-toggle-floating")}<section class="auth-art">${renderBrand()}<p class="eyebrow">Một nơi cho mọi mạch suy nghĩ</p><h1>Đổi AI.<br><span>Không đổi ngữ cảnh.</span></h1><p>Chọn mô hình phù hợp, gắn Skill và Plugin, theo dõi token, rồi tiếp tục cùng dự án ngay cả khi AI hiện tại đã chạm giới hạn.</p><div class="auth-notes"><span class="auth-note">⇢ Context Handoff</span><span class="auth-note">◒ Token Monitor</span><span class="auth-note">▦ Project Library</span></div></section><section class="auth-card"><span class="status-pill demo">Bản thử cục bộ · dữ liệu trên thiết bị</span><h2>${title}</h2><p>${description}</p>${isReset ? "" : renderAuthTabs()}${providerButton}${authForm}${isReset ? "" : `<button class="button button-quiet button-wide demo-guest-button" type="button" data-action="demo-guest">Dùng thử không cần tài khoản</button>`}<p class="auth-footnote">Không nhập mật khẩu Gmail vào biểu mẫu này. Mật khẩu tài khoản Bambuseae chỉ được lưu dưới dạng mã băm trong bản demo; tài khoản thật cần backend, phiên HttpOnly và xác minh email.</p></section></div>`;
 }
 
 function render() {
@@ -771,12 +939,52 @@ function closeModal() {
   if (modal.open) modal.close();
 }
 
+function setAuthMode(mode) {
+  authMode = ["login", "register", "reset"].includes(mode) ? mode : "login";
+  render();
+}
+
+function enterGuestMode() {
+  setAuthSession({ name: "Khách dùng thử", email: "demo@bambuseae.local", provider: "demo" }, false);
+  saveState();
+  render();
+  toast("Đã vào Bambuseae ở chế độ dùng thử.", "success");
+}
+
+function startGoogleAuth() {
+  if (config.googleOAuthEnabled && config.apiBaseUrl) {
+    const mode = state.authenticated ? "link" : authMode === "register" ? "register" : "login";
+    const redirect = encodeURIComponent(window.location.href);
+    window.location.href = `${config.apiBaseUrl.replace(/\/$/, "")}/auth/google/start?mode=${mode}&redirect=${redirect}`;
+    return;
+  }
+  toast("Google OAuth chưa được cấu hình. Hãy dùng email bản thử hoặc cấu hình backend trong config.js.", "warn");
+}
+
+async function hydrateRemoteSession() {
+  if (!config.apiBaseUrl || state.authenticated) return;
+  try {
+    const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/api/session`, { credentials: "include" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const user = payload.user || payload.profile;
+    if (!user?.email) return;
+    setAuthSession({ name: user.name || user.email.split("@")[0], email: user.email, provider: user.provider || "google" }, false);
+    saveState();
+    render();
+  } catch {
+    // Người dùng vẫn có thể dùng bản thử khi backend chưa hoạt động.
+  }
+}
+
 function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
   if (action === "view") return setActiveView(target.dataset.view);
   if (action === "toggle-theme") return toggleTheme();
+  if (action === "auth-mode") return setAuthMode(target.dataset.mode);
+  if (action === "demo-guest") return enterGuestMode();
   if (action === "toggle-sidebar") return document.body.classList.toggle("sidebar-open");
   if (action === "new-chat") return createNewChat();
   if (action === "open-modal") return openModal(target.dataset.modal, target.dataset.modelId || "");
@@ -793,13 +1001,25 @@ function handleClick(event) {
   if (action === "toggle-skill") { const skill = state.skills.find((item) => item.id === target.dataset.skillId); if (skill) { skill.enabled = !skill.enabled; saveState(); render(); } return; }
   if (action === "toggle-plugin") { const plugin = state.plugins.find((item) => item.id === target.dataset.pluginId); if (plugin) { plugin.enabled = !plugin.enabled; saveState(); render(); } return; }
   if (action === "google-login") {
-    if (config.googleOAuthEnabled && config.apiBaseUrl) window.location.href = `${config.apiBaseUrl.replace(/\/$/, "")}/auth/google/start?redirect=${encodeURIComponent(window.location.href)}`;
-    else toast("Google OAuth chưa được cấu hình. Bạn có thể dùng bản thử hoặc cấu hình API gateway trong config.js.", "warn");
+    startGoogleAuth();
     return;
   }
-  if (action === "demo-logout") { state.authenticated = false; saveState(); render(); return; }
+  if (action === "demo-logout") {
+    clearAuthSession();
+    state.user = structuredClone(defaultState.user);
+    authMode = "login";
+    saveState();
+    render();
+    toast("Đã đăng xuất khỏi Bambuseae.", "success");
+    return;
+  }
   if (action === "reset-demo") {
-    if (window.confirm("Xóa toàn bộ dữ liệu bản demo trên thiết bị này?")) { localStorage.removeItem(STORAGE_KEY); window.location.reload(); }
+    if (window.confirm("Xóa toàn bộ dữ liệu bản demo và tài khoản cục bộ trên thiết bị này?")) {
+      removeStorage(window.localStorage, STORAGE_KEY);
+      removeStorage(window.localStorage, ACCOUNTS_KEY);
+      clearAuthSession();
+      window.location.reload();
+    }
   }
 }
 
@@ -818,13 +1038,109 @@ async function handleSubmit(event) {
   const data = new FormData(form);
   const type = form.dataset.form;
   if (type === "local-login") {
-    const email = String(data.get("email") || "demo@bambuseae.local").trim();
-    const localName = email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-    state.user = { name: localName || "Khách dùng thử", email, initial: (localName || "K").slice(0, 1).toUpperCase() };
-    state.authenticated = true;
+    const email = normalizeEmail(data.get("email"));
+    const password = String(data.get("password") || "");
+    if (!email || !password) {
+      toast("Hãy nhập đầy đủ email và mật khẩu.", "warn");
+      return;
+    }
+    const account = findLocalAccount(email);
+    if (!account) {
+      toast("Chưa tìm thấy tài khoản này. Hãy chọn Đăng ký để tạo tài khoản.", "warn");
+      authMode = "register";
+      render();
+      return;
+    }
+    if (account.provider === "google" && !account.passwordHash) {
+      toast("Tài khoản này dùng Google. Hãy bấm “Tiếp tục với Google”.", "warn");
+      return;
+    }
+    let valid = false;
+    try {
+      valid = await verifyPassword(account, password);
+    } catch {
+      toast("Trình duyệt cần HTTPS để kiểm tra mật khẩu an toàn.", "warn");
+      return;
+    }
+    if (!valid) {
+      toast("Email hoặc mật khẩu chưa đúng.", "warn");
+      return;
+    }
+    setAuthSession(account, data.get("remember") === "on");
     saveState();
     render();
-    toast("Đã vào Bambuseae ở chế độ bản thử cục bộ.", "success");
+    toast("Đăng nhập Bambuseae thành công.", "success");
+    return;
+  }
+  if (type === "local-register") {
+    const name = String(data.get("name") || "").trim();
+    const email = normalizeEmail(data.get("email"));
+    const password = String(data.get("password") || "");
+    const passwordConfirm = String(data.get("passwordConfirm") || "");
+    if (name.length < 2) {
+      toast("Tên hiển thị cần có ít nhất 2 ký tự.", "warn");
+      return;
+    }
+    if (!email || !email.includes("@")) {
+      toast("Email chưa đúng định dạng.", "warn");
+      return;
+    }
+    if (password.length < 8) {
+      toast("Mật khẩu cần có ít nhất 8 ký tự.", "warn");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      toast("Hai ô mật khẩu chưa giống nhau.", "warn");
+      return;
+    }
+    if (findLocalAccount(email)) {
+      toast("Email này đã được đăng ký. Hãy chuyển sang Đăng nhập.", "warn");
+      authMode = "login";
+      render();
+      return;
+    }
+    let passwordRecord;
+    try {
+      passwordRecord = await createPasswordRecord(password);
+    } catch {
+      toast("Không thể tạo mật khẩu an toàn. Hãy mở Bambuseae bằng HTTPS.", "warn");
+      return;
+    }
+    const account = { id: uid("account"), name, email, provider: "local", createdAt: new Date().toISOString(), ...passwordRecord };
+    const accounts = [...readAccounts(), account];
+    if (!writeAccounts(accounts)) {
+      toast("Không thể lưu tài khoản trên trình duyệt này.", "warn");
+      return;
+    }
+    setAuthSession(account, data.get("remember") === "on");
+    saveState();
+    render();
+    toast("Đăng ký và đăng nhập thành công.", "success");
+    return;
+  }
+  if (type === "password-reset") {
+    const email = normalizeEmail(data.get("email"));
+    if (!email) {
+      toast("Hãy nhập email tài khoản.", "warn");
+      return;
+    }
+    if (!config.apiBaseUrl) {
+      toast("Đặt lại mật khẩu thật cần backend gửi email xác minh. Bản GitHub tĩnh chưa thể tự xác minh.", "warn");
+      return;
+    }
+    try {
+      const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/auth/password/forgot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      if (!response.ok) throw new Error(`AUTH_${response.status}`);
+      authMode = "login";
+      render();
+      toast("Đã gửi hướng dẫn khôi phục đến email nếu tài khoản tồn tại.", "success");
+    } catch {
+      toast("Backend chưa phản hồi yêu cầu khôi phục mật khẩu.", "warn");
+    }
     return;
   }
   if (type === "composer") return sendMessage(form);
@@ -867,3 +1183,4 @@ document.addEventListener("submit", handleSubmit);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 render();
+void hydrateRemoteSession();

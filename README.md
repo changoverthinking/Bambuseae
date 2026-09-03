@@ -6,6 +6,7 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 
 - Giao diện responsive cho máy tính và iPhone.
 - Đăng nhập bản thử cục bộ để xem toàn bộ luồng sử dụng.
+- Đăng ký/đăng nhập email bản thử, kiểm tra mật khẩu, quên mật khẩu và tùy chọn ghi nhớ đăng nhập.
 - Cuộc trò chuyện, tạo đoạn chat mới và tách nhánh chat.
 - Chuyển AI thủ công hoặc tự động khi gần hết hạn mức.
 - Theo dõi token đã dùng, còn lại, phần trăm và nhật ký input/output.
@@ -14,6 +15,8 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 - Lưu dữ liệu bản thử trong trình duyệt bằng `localStorage`.
 - PWA có manifest và service worker, có thể thêm vào màn hình chính iPhone.
 - Có sẵn điểm nối `POST /api/chat` để kết nối API gateway thật.
+
+Tài khoản email trong bản GitHub là tài khoản bản thử trên từng thiết bị. Mật khẩu không được lưu dạng rõ; bản demo lưu mã băm có muối bằng Web Crypto và chỉ lưu một phiên đăng nhập khi người dùng chọn ghi nhớ. Muốn đăng nhập cùng một tài khoản trên PC và iPhone, cần kết nối backend có database, xác minh email và cookie phiên `HttpOnly`.
 
 ## Cấu trúc tách AI
 
@@ -72,13 +75,14 @@ Nếu gateway không trả usage, Bambuseae sẽ ước tính khoảng một tok
 
 ## Google OAuth và đồng bộ thật
 
-Nút Google trong bản V1 chỉ chuyển sang backend khi `googleOAuthEnabled` và `apiBaseUrl` đã được cấu hình. Backend cần:
+Nút Google/“Liên kết Google” chuyển sang backend khi `googleOAuthEnabled` và `apiBaseUrl` đã được cấu hình. Backend nên trả `/api/session` sau OAuth để giao diện nhận lại tài khoản. Backend cần:
 
 - Google OAuth Authorization Code/PKCE hoặc luồng OAuth chính thức.
 - Cookie phiên `HttpOnly`, `Secure`, `SameSite` phù hợp.
 - Cơ sở dữ liệu người dùng, dự án, Thread, Skill, Plugin và usage log.
 - Phân quyền theo `user_id`/`project_id`.
 - Không bao giờ lưu mật khẩu Gmail.
+- Có endpoint đăng nhập/đăng ký, khôi phục mật khẩu và liên kết Google; frontend không được nhận mật khẩu Gmail.
 
 ## Bảo mật API key
 
@@ -92,7 +96,7 @@ Giao diện mặc định vẫn là nền tối để giữ phong cách Bambusea
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v4` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v5` và cache luôn các module trong `providers/` cùng icon PNG cho iPhone. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
 
 ## Chạy kiểm tra nhanh
 

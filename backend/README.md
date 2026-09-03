@@ -16,6 +16,18 @@ Request:
 }
 ```
 
+## Hợp đồng tài khoản cần triển khai
+
+Giao diện đã có luồng đăng ký/đăng nhập email, ghi nhớ phiên, quên mật khẩu và nút liên kết Google. Backend production cần cung cấp:
+
+- `GET /api/session`: trả tài khoản hiện tại từ cookie phiên `HttpOnly`.
+- `POST /auth/login`: kiểm tra email/mật khẩu và tạo phiên.
+- `POST /auth/register`: tạo tài khoản, gửi email xác minh và tạo phiên sau khi hợp lệ.
+- `POST /auth/password/forgot`: gửi liên kết đặt lại mật khẩu có thời hạn.
+- `GET /auth/google/start?mode=login|register|link`: OAuth Google với PKCE/state và redirect an toàn.
+
+Không trả API key, mật khẩu hoặc refresh token vào JavaScript phía trình duyệt. GitHub Pages chỉ giữ giao diện; database và cookie phiên phải nằm ở backend HTTPS.
+
 Response tối thiểu:
 
 ```json

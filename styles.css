@@ -346,6 +346,19 @@ input[type="range"] { accent-color: var(--green); }
 .auth-card { padding: 1.35rem; border: 1px solid var(--line-strong); border-radius: var(--radius-xl); background: var(--auth-card-bg); box-shadow: var(--shadow); }
 .auth-card h2 { margin: .65rem 0 .3rem; font-size: 1.55rem; }
 .auth-card > p { margin-bottom: 1.25rem; color: var(--muted); font-size: .85rem; }
+.auth-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem; margin: 1rem 0 1.05rem; padding: .25rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+.auth-tab { min-height: 2.35rem; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font-size: .82rem; font-weight: 750; }
+.auth-tab:hover, .auth-tab.active { color: var(--text); background: var(--surface-raised); box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.auth-form { margin-top: .95rem; }
+.auth-form-options { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; margin: -.1rem 0 1rem; }
+.remember-option { display: flex; min-width: 0; align-items: flex-start; gap: .5rem; color: var(--text-soft); font-size: .77rem; cursor: pointer; }
+.remember-option input { flex: 0 0 auto; width: 1rem; height: 1rem; margin: .14rem 0 0; accent-color: var(--green); }
+.remember-option span { display: grid; gap: .1rem; }
+.remember-option strong { font-size: .78rem; font-weight: 750; }
+.remember-option small { color: var(--muted); font-size: .7rem; line-height: 1.35; }
+.link-button { border: 0; padding: .15rem 0; color: var(--green); background: transparent; font-size: .76rem; white-space: nowrap; }
+.link-button:hover { color: var(--text); text-decoration: underline; }
+.demo-guest-button { margin-top: .35rem; }
 .google-button { width: 100%; min-height: 3rem; border: 1px solid var(--line-strong); border-radius: 12px; background: #f3f7f4; color: #17201e; font-weight: 800; }
 .google-button:hover { background: #fff; }
 .divider { display: flex; align-items: center; gap: .7rem; margin: 1.2rem 0; color: var(--muted); font-size: .75rem; }
@@ -421,5 +434,6 @@ html[data-theme="light"] .plugin-chip { color: #24617d; }
   .auth-art .brand { padding-bottom: 1.5rem; }
   .auth-art h1 { font-size: 2.6rem; }
   .auth-art p { font-size: .95rem; }
+  .auth-form-options { flex-direction: column; }
   .topbar-right .status-pill { display: none; }
 }
