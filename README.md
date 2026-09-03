@@ -15,6 +15,24 @@ Bambuseae là giao diện PWA cho một không gian làm việc AI đa mô hình
 - PWA có manifest và service worker, có thể thêm vào màn hình chính iPhone.
 - Có sẵn điểm nối `POST /api/chat` để kết nối API gateway thật.
 
+## Cấu trúc tách AI
+
+`index.html` chỉ là khung HTML. Giao diện được nạp từ `app.js`, còn danh mục và adapter của từng AI nằm trong thư mục `providers/`:
+
+```text
+providers/
+├─ registry.js
+├─ bambuseae-free/
+│  ├─ models.js
+│  └─ adapter.js
+├─ bambuseae-fast/
+├─ openai/
+├─ anthropic/
+└─ google/
+```
+
+Vì vậy thêm AI mới không cần nhồi thêm thẻ HTML. Chỉ cần thêm thư mục AI, đăng ký trong `providers/registry.js`, rồi để backend xử lý API key và định dạng gọi thật. `skills/`, `plugins/` và `core/` cũng được dành riêng để mở rộng thành các module độc lập.
+
 ## Đưa lên GitHub Pages
 
 1. Tạo một repository mới trên GitHub, ví dụ `Bambuseae`.
@@ -70,7 +88,7 @@ Dữ liệu hội thoại có thể mã hóa khi lưu. Tuy nhiên AI được ch
 
 ## Service worker
 
-Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v2`. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
+Khi phát hành bản mới, tăng `CACHE_NAME` trong `sw.js`. Bản hiện tại đã dùng `bambuseae-shell-v3` và cache luôn các module trong `providers/`. Nếu iPhone vẫn mở bản cũ, xóa PWA cũ khỏi màn hình chính, mở lại GitHub Pages bằng Safari rồi thêm lại.
 
 ## Chạy kiểm tra nhanh
 
@@ -78,6 +96,7 @@ Không cần cài npm cho bản giao diện tĩnh. Có thể kiểm tra cú phá
 
 ```bash
 node --check app.js
+node --check providers/registry.js
 node --check sw.js
 ```
 
@@ -85,6 +104,6 @@ node --check sw.js
 
 1. API gateway thật cho AI dùng chung và AI cá nhân.
 2. Google OAuth + cơ sở dữ liệu đồng bộ đa thiết bị.
-3. Adapter riêng cho OpenAI-compatible, Anthropic và Gemini.
+3. Adapter backend riêng cho OpenAI-compatible, Anthropic và Gemini; adapter giao diện đã có trong `providers/`.
 4. Bộ chuẩn Skill/Plugin có version, manifest, quyền và phê duyệt thao tác.
 5. Hạn mức chính xác theo tài khoản, cảnh báo 75/90/100% và chi phí.

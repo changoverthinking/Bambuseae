@@ -1,3 +1,5 @@
+import { cloneModelCatalog, getProviderAdapter } from "./providers/registry.js";
+
 const config = Object.assign(
   {
     apiBaseUrl: "",
@@ -24,78 +26,7 @@ const defaultState = {
   autoFallback: true,
   fallbackThreshold: 10,
   lastHandoff: null,
-  models: [
-    {
-      id: "bambuseae-free",
-      name: "Bambuseae Free",
-      provider: "Bambuseae",
-      category: "Đa năng",
-      tier: "Miễn phí",
-      shared: true,
-      available: true,
-      status: "Đang hoạt động",
-      used: 42600,
-      limit: 100000,
-      reset: "Hôm nay, 23:59",
-      note: "Hạn mức dùng chung"
-    },
-    {
-      id: "bambuseae-fast",
-      name: "Bambuseae Swift",
-      provider: "Bambuseae",
-      category: "Nhanh",
-      tier: "Miễn phí",
-      shared: true,
-      available: true,
-      status: "Đang hoạt động",
-      used: 18400,
-      limit: 75000,
-      reset: "Hôm nay, 23:59",
-      note: "AI dự phòng tự động"
-    },
-    {
-      id: "openai-personal",
-      name: "OpenAI Personal",
-      provider: "OpenAI",
-      category: "Đa năng",
-      tier: "API riêng",
-      shared: false,
-      available: false,
-      status: "Chưa kết nối",
-      used: 0,
-      limit: 250000,
-      reset: "Theo hạn mức bạn đặt",
-      note: "Nhập API key trong Cài đặt"
-    },
-    {
-      id: "claude-personal",
-      name: "Claude Personal",
-      provider: "Anthropic",
-      category: "Viết & phân tích",
-      tier: "API riêng",
-      shared: false,
-      available: false,
-      status: "Chưa kết nối",
-      used: 0,
-      limit: 250000,
-      reset: "Theo hạn mức bạn đặt",
-      note: "Nhập API key trong Cài đặt"
-    },
-    {
-      id: "gemini-personal",
-      name: "Gemini Personal",
-      provider: "Google",
-      category: "Đa phương thức",
-      tier: "API riêng",
-      shared: false,
-      available: false,
-      status: "Chưa kết nối",
-      used: 0,
-      limit: 250000,
-      reset: "Theo hạn mức bạn đặt",
-      note: "Nhập API key trong Cài đặt"
-    }
-  ],
+  models: cloneModelCatalog(),
   skills: [
     {
       id: "continuity",
@@ -264,6 +195,17 @@ const defaultState = {
 
 let state = loadState();
 
+function mergeModelCatalog(savedModels) {
+  const catalog = structuredClone(defaultState.models);
+  if (!Array.isArray(savedModels)) return catalog;
+  const defaultIds = new Set(catalog.map((model) => model.id));
+  const savedById = new Map(savedModels.filter((model) => model?.id).map((model) => [model.id, model]));
+  return [
+    ...catalog.map((model) => ({ ...model, ...(savedById.get(model.id) || {}) })),
+    ...savedModels.filter((model) => model?.id && !defaultIds.has(model.id)).map((model) => ({ ...model }))
+  ];
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -271,7 +213,7 @@ function loadState() {
     return {
       ...structuredClone(defaultState),
       ...saved,
-      models: saved.models || structuredClone(defaultState.models),
+      models: mergeModelCatalog(saved.models),
       skills: saved.skills || structuredClone(defaultState.skills),
       plugins: saved.plugins || structuredClone(defaultState.plugins),
       projects: saved.projects || structuredClone(defaultState.projects),
@@ -705,10 +647,18 @@ async function callConfiguredApi(model, thread) {
   const messages = thread.messages.map((message) => ({ role: message.role, content: message.content }));
   const skillContext = state.skills.filter((skill) => project.skillIds?.includes(skill.id) && skill.enabled).map((skill) => ({ name: skill.name, instructions: skill.instructions }));
   const pluginContext = state.plugins.filter((plugin) => project.pluginIds?.includes(plugin.id) && plugin.enabled).map((plugin) => ({ name: plugin.name, permission: plugin.permission }));
-  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/api/chat`, {
-    method: "POST",
+  const adapter = getProviderAdapter(model.id);
+  const request = adapter.buildGatewayRequest({
+    model,
+    messages,
+    project: { id: project.id, name: project.name, description: project.description },
+    skills: skillContext,
+    plugins: pluginContext
+  });
+  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}${request.path}`, {
+    method: request.method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: model.id, messages, project: { id: project.id, name: project.name, description: project.description }, skills: skillContext, plugins: pluginContext })
+    body: JSON.stringify(request.body)
   });
   if (!response.ok) throw new Error(`Gateway ${response.status}`);
   const payload = await response.json();

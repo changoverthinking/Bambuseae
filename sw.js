@@ -1,4 +1,4 @@
-const CACHE_NAME = "bambuseae-shell-v2";
+const CACHE_NAME = "bambuseae-shell-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,7 +6,18 @@ const APP_SHELL = [
   "./app.js",
   "./config.js",
   "./manifest.webmanifest",
-  "./icon.svg"
+  "./icon.svg",
+  "./providers/registry.js",
+  "./providers/bambuseae-free/models.js",
+  "./providers/bambuseae-free/adapter.js",
+  "./providers/bambuseae-fast/models.js",
+  "./providers/bambuseae-fast/adapter.js",
+  "./providers/openai/models.js",
+  "./providers/openai/adapter.js",
+  "./providers/anthropic/models.js",
+  "./providers/anthropic/adapter.js",
+  "./providers/google/models.js",
+  "./providers/google/adapter.js"
 ];
 
 self.addEventListener("install", (event) => {
